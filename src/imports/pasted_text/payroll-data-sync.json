@@ -1,0 +1,372 @@
+Update ALL modules to use fully connected and synchronized dummy payroll data.
+
+IMPORTANT:
+The system currently feels empty because some modules do not display data consistently.
+
+Every module MUST display realistic synchronized payroll data.
+
+==================================================
+MAIN REQUIREMENT
+==================================================
+
+Use:
+- 3 exact payroll records based on the provided payslip samples
+- plus 3 additional dummy employees
+
+TOTAL:
+6 ACTIVE EMPLOYEE PAYROLL RECORDS
+
+All modules must share and sync the same data source.
+
+==================================================
+STRICT DATA SYNCHRONIZATION
+==================================================
+
+The same employee data must appear consistently in:
+
+1. Dashboard
+2. Employee Management
+3. Attendance Entry
+4. Advance Payment
+5. Payroll Processing
+6. Payslip Management
+7. Branch Management
+8. Payroll Settings references
+9. Activity Logs
+10. Search and Filters
+11. Export Preview
+12. Print Preview
+
+Changes/status in one module must reflect in related modules.
+
+Example:
+- Employee appears in Employee Management
+→ same employee appears in Attendance
+→ same attendance generates Advance
+→ same advance appears in Payroll deduction
+→ same payroll generates Payslip
+
+==================================================
+USE EXACT PAYSLIP DATA
+==================================================
+
+Use EXACTLY the payroll structure and calculation from the provided payslip samples.
+
+==================================================
+EMPLOYEE RECORD 1
+==================================================
+
+Month:
+JAN 2026
+
+Employee No:
+14537
+
+Name:
+Muhammad Akmal Bin Razak
+
+Position:
+STATIC GUARD
+
+Location:
+MJ
+
+Branch:
+PPU IKS Simpang Ampat
+
+Bank:
+PBB
+
+Basic Salary:
+1700.00
+
+Overtime:
+243.77
+
+Rest Day:
+255.00
+
+Public Holiday:
+155.29
+
+OT Ganti:
+0.00
+
+Total Earnings:
+2354.06
+
+Deductions:
+KWSP: 146.00
+PERKESO: 9.75
+SIP: 3.90
+ADVANCES: 400.00
+UNPAID DAYS: 383.87
+
+Total Deduction:
+943.52
+
+Employer Contribution:
+KWSP: 172.00
+PERKESO: 34.15
+SIP: 3.90
+
+Net Salary:
+1410.55
+
+Working Days:
+Hari Biasa: 20 / 60.0 hours
+Hari Minggu: 3 / 9.0 hours
+Kelepasan Am: 1 / 3.0 hours
+
+Advance Status:
+Approved
+
+Payroll Status:
+Finalized
+
+==================================================
+EMPLOYEE RECORD 2
+==================================================
+
+Month:
+MAR 2026
+
+Employee No:
+14635
+
+Name:
+Ahmad Danish Bin Kamarul
+
+Position:
+STATIC GUARD
+
+Location:
+MJ
+
+Branch:
+PPU HalalHub Batu Kawan
+
+Bank:
+BSN
+
+Basic Salary:
+1700.00
+
+KLM Biasa:
+325.02
+
+Cuti Rehat:
+261.54
+
+KLM Cuti Rehat:
+78.46
+
+Cuti Am:
+130.77
+
+KLM Cuti Am:
+24.52
+
+OT Ganti:
+163.46
+
+Total Earnings:
+2683.78
+
+Deductions:
+KWSP: 187.00
+PERKESO: 13.25
+SIP: 5.30
+ADVANCES: 600.00
+
+Total Deduction:
+805.55
+
+Employer Contribution:
+KWSP: 221.00
+PERKESO: 46.35
+SIP: 5.30
+
+Net Salary:
+1878.22
+
+Working Days:
+Hari Biasa: 26
+Hari Minggu: 4
+Kelepasan Am: 1
+
+Advance Status:
+Approved
+
+Payroll Status:
+Finalized
+
+==================================================
+EMPLOYEE RECORD 3
+==================================================
+
+Month:
+APR 2026
+
+Employee No:
+14636
+
+Name:
+Muhammad Firdaus Bin Rahman
+
+Position:
+STATIC GUARD
+
+Location:
+MJ
+
+Branch:
+PPU IKS Simpang Ampat
+
+Bank:
+Maybank
+
+Basic Salary:
+1700.00
+
+Kerja Lebih Masa:
+73.13
+
+Cuti Rehat:
+85.00
+
+Cuti Am:
+0.00
+
+OT Ganti:
+0.00
+
+Total Earnings:
+1858.13
+
+Deductions:
+KWSP: 44.00
+PERKESO: 2.75
+SIP: 1.10
+UNPAID DAYS: 1303.33
+
+Total Deduction:
+1351.18
+
+Employer Contribution:
+KWSP: 52.00
+PERKESO: 9.65
+SIP: 1.10
+
+Net Salary:
+506.95
+
+Working Days:
+Hari Biasa: 6 / 18.0 hours
+Hari Minggu: 1 / 3.0 hours
+Kelepasan Am: 0 / 0.0 hours
+
+Advance Status:
+No Advance
+
+Payroll Status:
+Finalized
+
+==================================================
+ADDITIONAL DUMMY EMPLOYEES
+==================================================
+
+Create 3 more employees with:
+- realistic payroll values
+- same payroll structure
+- synchronized records
+- different months
+- different statuses
+
+Names:
+1. Mohd Hafiz Bin Salleh
+2. Ahmad Syafiq Bin Roslan
+3. Syed Amirul Hakim Bin Syed Azlan
+
+==================================================
+DASHBOARD REQUIREMENT
+==================================================
+
+Dashboard statistics must now calculate based on these 6 employees.
+
+Update:
+- Total Employees
+- Payroll Finalized
+- Advance Ready
+- Total Net Salary
+- Payroll Timeline
+- Activity Logs
+
+==================================================
+PAYSLIP MODULE REQUIREMENT
+==================================================
+
+Payslip table MUST show all available payroll records immediately.
+
+Do NOT show empty state anymore.
+
+Each row must contain:
+- Employee Name
+- Branch
+- Month
+- Gross Salary
+- Total Deduction
+- Net Salary
+- Status
+- View Icon
+- Print Icon
+- Download Icon
+
+==================================================
+ATTENDANCE MODULE REQUIREMENT
+==================================================
+
+Attendance table must contain:
+- attendance days
+- OT hours
+- unpaid days
+- branch
+- month
+- employee
+
+==================================================
+ADVANCE PAYMENT MODULE
+==================================================
+
+Must show:
+- advance eligibility
+- approved status
+- advance amount
+- attendance 1st–10th
+
+==================================================
+PAYROLL PROCESSING MODULE
+==================================================
+
+Must show:
+- payroll records
+- recalculation
+- finalized payroll
+- deduction summary
+- calculation detail preview
+
+==================================================
+IMPORTANT
+==================================================
+
+DO NOT:
+- rebuild app
+- change router
+- modify working authentication
+- refactor architecture
+
+ONLY:
+- populate realistic synchronized data
+- connect data across modules
+- improve realism
+- remove empty states
