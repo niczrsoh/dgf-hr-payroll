@@ -4,34 +4,75 @@ import * as db from '../../lib/database';
 import { toast } from 'sonner';
 
 export default function DummyAttendance() {
-  const { employees, saveAttendance } = usePayroll();
+  const { employees, saveAttendance, branches, projects } = usePayroll();
   const [loading, setLoading] = useState(false);
 
-  const generateJuneAttendance = async () => {
+  const generateMayDummyScenario = async () => {
     setLoading(true);
     try {
-      const month = '2026-06';
-      const promises = employees.map(emp => {
+      const month = '2026-05';
+      const branchCode = branches.length > 0 ? branches[0].code : 'HQ';
+      const projectId = projects.length > 0 ? projects[0].id : undefined;
+
+      // Dummy Employee Data
+      const dummyEmployees = [
+        { empNo: 'DUMMY-A', name: 'Person A', days: 20, otHours: 64, restDayHours: 20, phHours: 12, mcDays: 2, unpaidDays: 2, annualLeaveDays: 2, hospitalisationDays: 0, maternityDays: 0 },
+        { empNo: 'DUMMY-B', name: 'Person B', days: 20.5, otHours: 40, restDayHours: 20, phHours: 0, mcDays: 0, unpaidDays: 0, annualLeaveDays: 1, hospitalisationDays: 0, maternityDays: 0 },
+        { empNo: 'DUMMY-C', name: 'Person C', days: 14, otHours: 32, restDayHours: 20, phHours: 12, mcDays: 0, unpaidDays: 0, annualLeaveDays: 0, hospitalisationDays: 14, maternityDays: 0 },
+        { empNo: 'DUMMY-D', name: 'Person D', days: 0, otHours: 0, restDayHours: 0, phHours: 0, mcDays: 0, unpaidDays: 0, annualLeaveDays: 0, hospitalisationDays: 0, maternityDays: 30 },
+        { empNo: 'DUMMY-E', name: 'Person E', days: 10, otHours: 8, restDayHours: 0, phHours: 0, mcDays: 5, unpaidDays: 12, annualLeaveDays: 0, hospitalisationDays: 0, maternityDays: 0 },
+      ];
+
+      // Step 1: Create or Get Employees
+      for (const dummy of dummyEmployees) {
+        let emp = employees.find(e => e.employeeNo === dummy.empNo);
+        if (!emp) {
+          const newEmp = {
+            id: crypto.randomUUID(),
+            employeeNo: dummy.empNo,
+            fullName: dummy.name,
+            icNumber: '900101-14-1234',
+            position: 'Static Guard',
+            branch: branches.find(b => b.code === branchCode)?.name || 'HQ',
+            branchCode: branchCode,
+            projectId: projectId,
+            basicSalary: 1700,
+            bankName: 'Maybank',
+            accountNumber: '1234567890',
+            epfNumber: '12345678',
+            socsoNumber: '12345678',
+            status: 'Active' as const,
+            createdDate: '2026-05-01'
+          };
+          await db.addEmployee(newEmp);
+          emp = newEmp;
+        }
+
+        // Step 2: Add Attendance
         const attendance = {
           employeeId: emp.id,
           month,
-          attendanceDays: 26,
-          otHours: 0,
-          restDayHours: 0,
-          publicHolidayHours: 0,
+          attendanceDays: dummy.days,
+          otHours: dummy.otHours,
+          restDayHours: dummy.restDayHours,
+          publicHolidayHours: dummy.phHours,
           otReplacement: 0,
-          unpaidDays: 0,
+          unpaidDays: dummy.unpaidDays,
+          mcDays: dummy.mcDays,
+          annualLeaveDays: dummy.annualLeaveDays,
+          hospitalisationDays: dummy.hospitalisationDays,
+          maternityDays: dummy.maternityDays
         };
-        // Use context function which also updates local state
-        saveAttendance(attendance as any);
-        return db.saveAttendance(attendance as any);
-      });
 
-      await Promise.all(promises);
-      toast.success(`Successfully generated June 2026 attendance for ${employees.length} employees!`);
+        saveAttendance(attendance as any);
+        await db.saveAttendance(attendance as any);
+      }
+
+      toast.success('Successfully generated May 2026 dummy scenario!');
+      setTimeout(() => { window.location.reload() }, 1000); // Reload to pull new employees
     } catch (err) {
       console.error(err);
-      toast.error('Failed to generate attendance');
+      toast.error('Failed to generate dummy scenario');
     } finally {
       setLoading(false);
     }
@@ -45,18 +86,27 @@ export default function DummyAttendance() {
           Use these tools to quickly generate test data so you can test the payroll processing flow without manually entering attendance for every employee.
         </p>
         
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
-          <h2 className="text-lg font-semibold text-blue-900 mb-2">Auto-Fill June Attendance</h2>
-          <p className="text-sm text-blue-700 mb-6">
-            This will instantly give all {employees.length} employees perfect attendance (26 days, 0 unpaid leave) for the month of June 2026.
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 text-left">
+          <h2 className="text-lg font-semibold text-blue-900 mb-2">May 2026 Dummy Scenario</h2>
+          <p className="text-sm text-blue-700 mb-4">
+            This will create 5 specific dummy employees (Person A to E) with complex attendance configurations (MC, Annual Leave, Hospitalisation, Maternity, Unpaid) for May 2026.
           </p>
-          <button
-            onClick={generateJuneAttendance}
-            disabled={loading}
-            className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-6 rounded-lg shadow-sm transition-colors disabled:opacity-50"
-          >
-            {loading ? 'Generating...' : 'Generate June 2026 Attendance'}
-          </button>
+          <ul className="text-xs text-blue-800 list-disc pl-5 mb-6 space-y-1">
+            <li>Person A: Heavy OT, Rest Day OT, Public Holiday, Leaves</li>
+            <li>Person B: Half-day Annual Leave (20.5 working days)</li>
+            <li>Person C: 14 days Hospitalisation</li>
+            <li>Person D: 30 days Maternity</li>
+            <li>Person E: High Unpaid Days (12 days total) & 5 days MC</li>
+          </ul>
+          <div className="text-center">
+            <button
+              onClick={generateMayDummyScenario}
+              disabled={loading}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-6 rounded-lg shadow-sm transition-colors disabled:opacity-50"
+            >
+              {loading ? 'Generating...' : 'Generate May 2026 Scenario'}
+            </button>
+          </div>
         </div>
       </div>
     </div>

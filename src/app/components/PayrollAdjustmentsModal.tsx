@@ -18,7 +18,7 @@ export default function PayrollAdjustmentsModal({ employee, payroll, onSave, onC
   );
 
   const addReimbursement = () => {
-    setReimbursements([...reimbursements, { type: 'Travel Allowance', amount: 0 }]);
+    setReimbursements([...reimbursements, { type: 'Travel Reimbursement', amount: 0 }]);
   };
 
   const removeReimbursement = (index: number) => {
@@ -53,7 +53,7 @@ export default function PayrollAdjustmentsModal({ employee, payroll, onSave, onC
           {/* Reimbursements Section */}
           <div>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold text-slate-900">Reimbursements & Allowances</h3>
+              <h3 className="font-semibold text-slate-900">Reimbursements</h3>
               <button
                 onClick={addReimbursement}
                 className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 font-medium"
@@ -70,17 +70,24 @@ export default function PayrollAdjustmentsModal({ employee, payroll, onSave, onC
               <div className="space-y-3">
                 {reimbursements.map((r, index) => (
                   <div key={index} className="flex items-center gap-3">
-                    <select
-                      value={r.type}
-                      onChange={(e) => updateReimbursement(index, 'type', e.target.value)}
-                      className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="Travel Allowance">Travel Allowance</option>
-                      <option value="Mileage">Mileage</option>
-                      <option value="Meal Allowance">Meal Allowance</option>
-                      <option value="Commuter Benefit">Commuter Benefit</option>
-                      <option value="Other">Other</option>
-                    </select>
+                    <div className="flex-1">
+                      <input
+                        type="text"
+                        list="reimbursement-types"
+                        value={r.type}
+                        onChange={(e) => updateReimbursement(index, 'type', e.target.value)}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                        placeholder="e.g. Travel, Tools"
+                      />
+                      <datalist id="reimbursement-types">
+                        <option value="Travel Reimbursement" />
+                        <option value="Mileage" />
+                        <option value="Meal Reimbursement" />
+                        <option value="Tools Reimbursement" />
+                        <option value="Commuter Benefit" />
+                        <option value="Other" />
+                      </datalist>
+                    </div>
                     <div className="relative w-32">
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">RM</span>
                       <input

@@ -12,6 +12,7 @@ import BranchManagement from "./pages/BranchManagement";
 import PayrollSettings from "./pages/PayrollSettings";
 import ComingSoon from "./pages/ComingSoon";
 import Reporting from "./pages/Reporting";
+import DummyAttendance from "./pages/DummyAttendance";
 
 export const router = createBrowserRouter([
   {
@@ -31,6 +32,7 @@ export const router = createBrowserRouter([
       { path: "branches", element: <BranchManagement /> },
       { path: "reporting", element: <Reporting /> },
       { path: "settings", element: <PayrollSettings /> },
+      { path: "dummy", element: <DummyAttendance /> },
       { path: "coming-soon/:module", element: <ComingSoon /> },
     ],
   },

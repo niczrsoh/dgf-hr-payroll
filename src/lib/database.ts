@@ -327,9 +327,13 @@ export async function fetchAttendance(): Promise<Attendance[]> {
     attendanceDays: Number(att.attendance_days),
     otHours: Number(att.ot_hours),
     restDayHours: Number(att.rest_day_hours),
-    publicHolidayHours: Number(att.public_holiday_hours),
-    otReplacement: Number(att.ot_replacement),
-    unpaidDays: Number(att.unpaid_days),
+    publicHolidayHours: Number(att.public_holiday_hours) || 0,
+    otReplacement: Number(att.ot_replacement) || 0,
+    unpaidDays: Number(att.unpaid_days) || 0,
+    mcDays: Number(att.mc_days) || 0,
+    annualLeaveDays: Number(att.annual_leave_days) || 0,
+    hospitalisationDays: Number(att.hospitalisation_days) || 0,
+    maternityDays: Number(att.maternity_days) || 0,
   }));
 }
 
@@ -344,9 +348,14 @@ export async function saveAttendance(attendance: Attendance): Promise<boolean> {
       attendance_days: attendance.attendanceDays,
       ot_hours: attendance.otHours,
       rest_day_hours: attendance.restDayHours,
-      public_holiday_hours: attendance.publicHolidayHours,
-      ot_replacement: attendance.otReplacement,
-      unpaid_days: attendance.unpaidDays,
+      public_holiday_hours: attendance.publicHolidayHours || 0,
+      ot_replacement: attendance.otReplacement || 0,
+      unpaid_days: attendance.unpaidDays || 0,
+      mc_days: attendance.mcDays || 0,
+      annual_leave_days: attendance.annualLeaveDays || 0,
+      hospitalisation_days: attendance.hospitalisationDays || 0,
+      maternity_days: attendance.maternityDays || 0,
+      updated_at: new Date().toISOString()
     }, {
       onConflict: 'employee_id,month'
     });

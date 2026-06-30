@@ -15,11 +15,13 @@ export default function PayrollProcessing() {
     projects,
     payrolls, 
     attendance, 
+    dailyAttendance,
     advances,
     generatePayroll, 
     finalizePayroll,
     payPayroll,
     updatePayroll,
+    revertPayrollToDraft,
     updatePayrollAdjustments,
     saveAttendance
   } = usePayroll();
@@ -87,15 +89,48 @@ export default function PayrollProcessing() {
   const activeAdvance = activeEmployeeId ? advances.find(a => a.employeeId === activeEmployeeId && a.month === selectedMonth) : undefined;
 
   const getAttendanceRecord = (employeeId: string) => {
-    return attendance.find(a => a.employeeId === employeeId && a.month === selectedMonth) || {
-      employeeId,
-      month: selectedMonth,
-      attendanceDays: 0,
-      otHours: 0,
-      restDayHours: 0,
-      publicHolidayHours: 0,
-      otReplacement: 0,
-      unpaidDays: 0,
+    const existing = attendance.find(a => a.employeeId === employeeId && a.month === selectedMonth);
+    if (existing) return existing;
+
+    const empDaily = dailyAttendance.filter(d => d.employeeId === employeeId && d.date.startsWith(selectedMonth));
+    if (empDaily.length > 0) {
+      let attendanceDays = 0, normalDays = 0, restDays = 0, publicHolidays = 0;
+      let otHours = 0, restDayHours = 0, publicHolidayHours = 0;
+      let unpaidDays = 0, mcDays = 0, annualLeaveDays = 0, hospitalisationDays = 0, maternityDays = 0;
+
+      empDaily.forEach(record => {
+        const duration = record.duration || 1;
+        if (record.leaveType !== 'None') {
+          if (record.leaveType !== 'Rest') {
+            if (!record.leavePaid) unpaidDays += duration;
+            else {
+              attendanceDays += duration;
+              if (record.leaveType === 'MC') mcDays += duration;
+              if (record.leaveType === 'Annual') annualLeaveDays += duration;
+              if (record.leaveType === 'Hospitalization') hospitalisationDays += duration;
+              if (record.leaveType === 'Maternity') maternityDays += duration;
+            }
+          }
+        } else {
+          attendanceDays += duration;
+          if (record.dayType === 'Normal Day') normalDays += duration;
+          if (record.dayType === 'Rest Day') restDays += duration;
+          if (record.dayType === 'Public Holiday') publicHolidays += duration;
+        }
+        if (record.dayType === 'Normal Day') otHours += record.otHours;
+        else if (record.dayType === 'Rest Day') restDayHours += record.otHours;
+        else if (record.dayType === 'Public Holiday') publicHolidayHours += record.otHours;
+      });
+
+      return {
+        employeeId, month: selectedMonth, attendanceDays, normalDays, restDays, publicHolidays, otHours, restDayHours, publicHolidayHours,
+        otReplacement: 0, unpaidDays, mcDays, annualLeaveDays, hospitalisationDays, maternityDays
+      };
+    }
+
+    return {
+      employeeId, month: selectedMonth, attendanceDays: 0, normalDays: 0, restDays: 0, publicHolidays: 0, otHours: 0, restDayHours: 0, publicHolidayHours: 0,
+      otReplacement: 0, unpaidDays: 0, mcDays: 0, annualLeaveDays: 0, hospitalisationDays: 0, maternityDays: 0
     };
   };
 
@@ -267,6 +302,12 @@ export default function PayrollProcessing() {
             if (activeEmployee) {
               finalizePayroll(activeEmployee.id, selectedMonth);
               toast.success('Payroll finalized');
+            }
+          }}
+          onRevertToDraft={() => {
+            if (activeEmployee) {
+              revertPayrollToDraft(activeEmployee.id, selectedMonth);
+              toast.success('Payroll reverted to draft');
             }
           }}
           onPay={() => {

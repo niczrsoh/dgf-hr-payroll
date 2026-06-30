@@ -35,8 +35,6 @@ export default function DailyAttendanceModal({
   
   // Bulk Fill State
   const [selectedEmployees, setSelectedEmployees] = useState<Set<string>>(new Set());
-  const [showBulkFillModal, setShowBulkFillModal] = useState(false);
-  const [bulkLeaveType, setBulkLeaveType] = useState<DailyAttendance['leaveType']>('None');
 
   // Filter employees
   const filteredEmployees = employees.filter(emp => {
@@ -59,7 +57,7 @@ export default function DailyAttendanceModal({
         date,
         dayType,
         otHours: 0,
-        leaveType: 'None',
+        leaveType: dayType === 'Normal Day' ? 'None' : 'Rest',
         leavePaid: false,
         ...dailyRecords.find(r => r.id === `${empId}_${date}`),
         ...edits[empId]
@@ -73,7 +71,7 @@ export default function DailyAttendanceModal({
       date,
       dayType,
       otHours: 0,
-      leaveType: 'None',
+      leaveType: dayType === 'Normal Day' ? 'None' : 'Rest',
       leavePaid: false
     };
   };
@@ -106,7 +104,7 @@ export default function DailyAttendanceModal({
         allowedAnnualLeave = Math.floor((settings.annualLeaveDays / 12) * Math.max(1, monthsWorked));
       }
       
-      const annualTaken = yearRecords.filter(r => r.leaveType === 'Annual' && r.leavePaid).length;
+      const annualTaken = yearRecords.filter(r => r.leaveType === 'Annual' && r.leavePaid).reduce((sum, r) => sum + (r.duration || 1), 0);
       if (annualTaken >= allowedAnnualLeave) {
         return { allowed: false, paid: false, reason: `Exceeded ${allowedAnnualLeave} days limit (Pro-rated)` };
       }
@@ -114,7 +112,7 @@ export default function DailyAttendanceModal({
     }
     
     if (leaveType === 'MC') {
-      const mcTaken = yearRecords.filter(r => r.leaveType === 'MC' && r.leavePaid).length;
+      const mcTaken = yearRecords.filter(r => r.leaveType === 'MC' && r.leavePaid).reduce((sum, r) => sum + (r.duration || 1), 0);
       if (mcTaken >= settings.mcDays) {
         return { allowed: false, paid: false, reason: `Exceeded ${settings.mcDays} days limit` };
       }
@@ -122,7 +120,7 @@ export default function DailyAttendanceModal({
     }
 
     if (leaveType === 'Hospitalization') {
-      const hospTaken = yearRecords.filter(r => r.leaveType === 'Hospitalization' && r.leavePaid).length;
+      const hospTaken = yearRecords.filter(r => r.leaveType === 'Hospitalization' && r.leavePaid).reduce((sum, r) => sum + (r.duration || 1), 0);
       if (hospTaken >= settings.hospitalisationDays) {
         return { allowed: false, paid: false, reason: `Exceeded ${settings.hospitalisationDays} days limit` };
       }
@@ -130,7 +128,7 @@ export default function DailyAttendanceModal({
     }
 
     if (leaveType === 'Maternity') {
-      const matTaken = yearRecords.filter(r => r.leaveType === 'Maternity' && r.leavePaid).length;
+      const matTaken = yearRecords.filter(r => r.leaveType === 'Maternity' && r.leavePaid).reduce((sum, r) => sum + (r.duration || 1), 0);
       if (matTaken >= settings.maternityDays) {
         return { allowed: false, paid: false, reason: `Exceeded ${settings.maternityDays} days limit` };
       }
@@ -144,9 +142,9 @@ export default function DailyAttendanceModal({
     const year = date.substring(0, 4);
     const yearRecords = dailyRecords.filter(r => r.employeeId === emp.id && r.date.startsWith(year));
     
-    const annualTaken = yearRecords.filter(r => r.leaveType === 'Annual' && r.leavePaid).length;
-    const mcTaken = yearRecords.filter(r => r.leaveType === 'MC' && r.leavePaid).length;
-    const unpaidTaken = yearRecords.filter(r => r.leaveType !== 'None' && !r.leavePaid).length;
+    const annualTaken = yearRecords.filter(r => r.leaveType === 'Annual' && r.leavePaid).reduce((sum, r) => sum + (r.duration || 1), 0);
+    const mcTaken = yearRecords.filter(r => r.leaveType === 'MC' && r.leavePaid).reduce((sum, r) => sum + (r.duration || 1), 0);
+    const unpaidTaken = yearRecords.filter(r => r.leaveType !== 'None' && r.leaveType !== 'Rest' && !r.leavePaid).reduce((sum, r) => sum + (r.duration || 1), 0);
     
     let allowedAnnualLeave = settings.annualLeaveDays;
 
@@ -180,10 +178,11 @@ export default function DailyAttendanceModal({
     }
   };
 
-  const handleApplyBulkFill = () => {
+  const handleConfirmSelected = () => {
     const updates: Record<string, Partial<DailyAttendance>> = {};
     selectedEmployees.forEach(id => {
-      updates[id] = { leaveType: bulkLeaveType };
+      const record = getRecord(id);
+      updates[id] = { ...record };
     });
     
     setEdits(prev => ({
@@ -191,7 +190,6 @@ export default function DailyAttendanceModal({
       ...updates
     }));
     
-    setShowBulkFillModal(false);
     setSelectedEmployees(new Set());
   };
 
@@ -208,17 +206,30 @@ export default function DailyAttendanceModal({
       if (record.leaveType !== 'None') {
         const eligibility = calculateLeaveEligibility(emp, record.leaveType);
         record.leavePaid = eligibility.allowed && eligibility.paid;
-        record.otHours = 0; // No OT on leave days
+        
+        let anticipatedOt = 0;
+        if (emp.projectId) {
+          const project = projects.find(p => p.id === emp.projectId);
+          if (project) {
+            anticipatedOt = project.payStructure === '8+4' ? 4 : project.payStructure === '8+3' ? 3 : 0;
+          }
+        }
+        record.otHours = record.hasOT ? anticipatedOt : 0; // Assign OT if checked
+
         if (!eligibility.allowed && record.leaveType !== 'Unpaid Leave') {
           toast.warning(`${emp.fullName} exceeded ${record.leaveType} limit. Marked as Unpaid.`);
         }
       } else {
         record.leavePaid = false;
+        record.duration = 1; // Full day if present
+        
         // Automatic OT assignment based on project
         if (emp.projectId) {
           const project = projects.find(p => p.id === emp.projectId);
           if (project) {
-            record.otHours = project.payStructure === '8+4' ? 4 : project.payStructure === '8+3' ? 3 : 0;
+            const anticipatedOt = project.payStructure === '8+4' ? 4 : project.payStructure === '8+3' ? 3 : 0;
+            // Respect manual toggle if it was touched, otherwise default to expected OT
+            record.otHours = (record.hasOT !== false) ? anticipatedOt : 0;
           }
         } else {
           record.otHours = 0; // Default for no project
@@ -295,11 +306,11 @@ export default function DailyAttendanceModal({
           <div className="mx-6 mt-4 flex items-center justify-between bg-blue-50 border border-blue-200 rounded-lg px-4 py-2">
             <span className="text-sm font-medium text-blue-900">{selectedEmployees.size} employees selected</span>
             <button
-              onClick={() => setShowBulkFillModal(true)}
+              onClick={handleConfirmSelected}
               className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700 transition-colors"
             >
               <CheckCircle2 className="w-4 h-4" />
-              Bulk Fill Selected
+              Confirm Selected
             </button>
           </div>
         )}
@@ -339,23 +350,54 @@ export default function DailyAttendanceModal({
 
                 // Salary Calculation
                 const dailyBasic = emp.basicSalary / 26;
-                let otRate = (dailyBasic / 8) * 1.5; // Standard MY OT rate
-                if (project && project.customOtRate) {
-                  otRate = project.customOtRate;
+                let mult = 1.5;
+                if (dayType === 'Rest Day') mult = 2.0;
+                if (dayType === 'Public Holiday') mult = 3.0;
+                
+                try {
+                  const tableData = project?.payStructure === '8+3' ? settings.eightPlusThreeData : settings.eightPlusFourData;
+                  if (tableData) {
+                    const table = JSON.parse(tableData);
+                    const rowType = dayType === 'Normal Day' ? 'Normal Day OT' : dayType === 'Rest Day' ? 'Rest Day OT' : 'Public Holiday OT';
+                    const row = table.find((r: any) => r.dayType === rowType);
+                    if (row && row.multiplier) {
+                      mult = parseFloat(row.multiplier);
+                    }
+                  }
+                } catch(e) {}
+
+                if (dayType === 'Normal Day' && project?.customOtMultiplier) {
+                  mult = project.customOtMultiplier;
                 }
                 
-                // Anticipated OT Hours if Working
-                let anticipatedOt = record.otHours;
-                if (record.leaveType === 'None' && project) {
+                let otRate = (dailyBasic / 8) * mult;
+                
+                // Anticipated OT Hours
+                let anticipatedOt = 0;
+                if (project) {
                   anticipatedOt = project.payStructure === '8+4' ? 4 : project.payStructure === '8+3' ? 3 : 0;
                 }
+                
+                let activeOt = 0;
+                if (record.leaveType === 'None') {
+                  activeOt = (record.hasOT !== false) ? anticipatedOt : 0;
+                } else {
+                  activeOt = record.hasOT ? anticipatedOt : 0;
+                }
+
+                const duration = record.duration || 1;
 
                 // Est Pay
                 let estPay = 0;
                 if (record.leaveType === 'None') {
-                  estPay = dailyBasic + (anticipatedOt * otRate);
+                  estPay = dailyBasic + (activeOt * otRate);
+                } else if (record.leaveType === 'Rest') {
+                  estPay = 0; // Show 0 for non-working rest day
                 } else if (record.leavePaid || (record.leaveType !== 'Unpaid Leave' && calculateLeaveEligibility(emp, record.leaveType).allowed)) {
-                  estPay = dailyBasic; // Paid leave
+                  estPay = dailyBasic + (activeOt * otRate); // Paid leave (full or half) still gets daily basic + OT
+                } else {
+                  // Unpaid leave
+                  estPay = (dailyBasic * (1 - duration)) + (activeOt * otRate);
                 }
 
                 return (
@@ -378,8 +420,13 @@ export default function DailyAttendanceModal({
                         <div>
                           <div className="text-sm font-medium text-slate-800">{project.name}</div>
                           {record.leaveType === 'None' && (
-                            <div className="text-xs text-blue-600 font-medium bg-blue-50 inline-block px-2 py-0.5 rounded mt-1">
-                              Auto: {project.payStructure === '8+4' ? '4' : '3'} hrs OT
+                            <div className="flex items-center gap-1 mt-1">
+                              <div className="text-[10px] text-blue-600 font-medium bg-blue-50 px-2 py-0.5 rounded">
+                                Auto: {project.payStructure === '8+4' ? '4' : '3'} hrs OT
+                              </div>
+                              <div className={`text-[10px] font-medium px-2 py-0.5 rounded ${project.customOtMultiplier && dayType === 'Normal Day' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>
+                                @ {mult}x
+                              </div>
                             </div>
                           )}
                         </div>
@@ -390,18 +437,75 @@ export default function DailyAttendanceModal({
                     <td className="px-6 py-3">
                       <div className="flex flex-col gap-1.5">
                         <select
-                          value={record.leaveType}
-                          onChange={(e) => handleFieldChange(emp.id, 'leaveType', e.target.value)}
+                          value={record.leaveType === 'None' && record.hasOT !== false ? 'None' : (record.leaveType === 'Rest' || (record.leaveType === 'None' && record.hasOT === false) ? 'Rest' : record.leaveType)}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (val === 'Rest') {
+                              handleFieldChange(emp.id, 'leaveType', 'Rest');
+                              handleFieldChange(emp.id, 'hasOT', false);
+                            } else {
+                              handleFieldChange(emp.id, 'leaveType', val);
+                              if (val === 'None') handleFieldChange(emp.id, 'hasOT', true);
+                              if (val !== 'None' && record.duration === undefined) {
+                                handleFieldChange(emp.id, 'duration', 1);
+                              }
+                            }
+                          }}
                           className="w-48 px-3 py-1.5 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 text-sm"
                         >
-                          <option value="None">Working (Present)</option>
-                          <option value="Annual">Annual Leave</option>
-                          <option value="MC">Medical Leave (MC)</option>
-                          <option value="Hospitalization">Hospitalization</option>
-                          <option value="Maternity">Maternity Leave</option>
-                          <option value="Unpaid Leave">Unpaid Leave</option>
+                          {dayType === 'Normal Day' ? (
+                            <>
+                              <option value="None">Working (Present)</option>
+                              <option value="Annual">Annual Leave</option>
+                              <option value="MC">Medical Leave (MC)</option>
+                              <option value="Hospitalization">Hospitalization</option>
+                              <option value="Maternity">Maternity Leave</option>
+                              <option value="Unpaid Leave">Unpaid Leave</option>
+                            </>
+                          ) : (
+                            <>
+                              <option value="None">Working</option>
+                              <option value="Rest">Non-working</option>
+                            </>
+                          )}
                         </select>
                         
+                        {record.leaveType !== 'None' && record.leaveType !== 'Rest' && (
+                          <div className="flex items-center gap-2 mt-1">
+                            <select
+                              value={record.duration || 1}
+                              onChange={(e) => handleFieldChange(emp.id, 'duration', parseFloat(e.target.value))}
+                              className="w-24 px-2 py-1 text-xs border border-slate-300 rounded focus:ring-2 focus:ring-blue-500"
+                            >
+                              <option value={1}>Full Day</option>
+                              <option value={0.5}>Half Day</option>
+                            </select>
+                            
+                            <label className="flex items-center gap-1.5 text-[10px] font-medium text-slate-600 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={record.hasOT || false}
+                                onChange={(e) => handleFieldChange(emp.id, 'hasOT', e.target.checked)}
+                                className="rounded text-blue-600 focus:ring-blue-500 border-slate-300 w-3 h-3"
+                              />
+                              Include OT
+                            </label>
+                          </div>
+                        )}
+                        
+                        {record.leaveType === 'None' && (
+                          <div className="flex items-center gap-2 mt-1">
+                            <label className="flex items-center gap-1.5 text-[10px] font-medium text-slate-600 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={record.hasOT !== false}
+                                onChange={(e) => handleFieldChange(emp.id, 'hasOT', e.target.checked)}
+                                className="rounded text-blue-600 focus:ring-blue-500 border-slate-300 w-3 h-3"
+                              />
+                              Include OT
+                            </label>
+                          </div>
+                        )}
                         <div className="flex items-center justify-between">
                           <div className="text-[10px] text-slate-500 font-medium space-x-2">
                             <span>AL: {balances.annual}/{balances.annualLimit}</span>
@@ -427,9 +531,9 @@ export default function DailyAttendanceModal({
                       <div className="font-semibold text-slate-800">
                         RM {estPay.toFixed(2)}
                       </div>
-                      {record.leaveType === 'None' && anticipatedOt > 0 && (
+                      {activeOt > 0 && (
                         <div className="text-[10px] text-slate-500">
-                          (Incl. RM {(anticipatedOt * otRate).toFixed(2)} OT)
+                          (Incl. RM {(activeOt * otRate).toFixed(2)} OT)
                         </div>
                       )}
                     </td>
@@ -465,43 +569,6 @@ export default function DailyAttendanceModal({
           </button>
         </div>
       </div>
-
-      {/* Bulk Fill Modal */}
-      {showBulkFillModal && (
-        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-[60] p-4">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-sm overflow-hidden flex flex-col">
-            <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
-              <h3 className="text-lg font-semibold text-slate-900">Bulk Fill {selectedEmployees.size} Employees</h3>
-              <button onClick={() => setShowBulkFillModal(false)} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
-            </div>
-            <div className="p-6">
-              <p className="text-sm text-slate-600 mb-4">Set the attendance status for the selected employees.</p>
-              <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">Status / Leave Type</label>
-                <select
-                  value={bulkLeaveType}
-                  onChange={(e) => setBulkLeaveType(e.target.value as any)}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="None">Present (Normal)</option>
-                  <option value="Annual">Annual Leave</option>
-                  <option value="MC">Medical Certificate (MC)</option>
-                  <option value="Unpaid Leave">Unpaid Leave</option>
-                  <option value="Hospitalization">Hospitalization Leave</option>
-                  <option value="Maternity">Maternity Leave</option>
-                  <option value="Paternity">Paternity Leave</option>
-                  <option value="Compassionate">Compassionate Leave</option>
-                  <option value="Emergency">Emergency Leave</option>
-                </select>
-              </div>
-            </div>
-            <div className="px-6 py-4 border-t border-slate-200 bg-slate-50 flex justify-end gap-3">
-              <button onClick={() => setShowBulkFillModal(false)} className="px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200 rounded">Cancel</button>
-              <button onClick={handleApplyBulkFill} className="px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded hover:bg-blue-700">Apply to {selectedEmployees.size} Employees</button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

@@ -1,0 +1,19 @@
+Improves:
+
+1. can have a dummy attendance (May) for four type of persons:
+  person A: 
+  20 days normal, 16 days OT (normal day), 2 days rest day, 1 day OT rest day, 1 day public holiday, 1 day OT public holiday, 2 days MC, 2 day unpaid leave, 2 day annual leave
+  person B (annual leave 0.5 day (emeregency), 0.5 day annual leave) :
+  20.5 days normal, 10 days OT (normal day), 2 days rest day, 1 day OT rest day, 0.5 day annual leave, 
+  person C: (hospitalisation):
+  14 days normal, 8 days OT (normal day), 2 days rest day, 1 day OT rest day, 1 day public holiday, 1 day OT public holiday, 14 days hospitalisation  
+  person D:  (maternity)
+  30 days maternity leave
+  person E: (many unpaid)
+  10 days normal, 2 days OT (normal day), 10 days unpaid leave, 5 days MC, 2 days unpaid leave
+
+2. can set 0.5 for the leave at the attendance side. the attendance can set have OT or no OT
+
+3. admin can input more reimbursement for an employee during the payroll like travel, tools etc . this reimbursement will be under the income of the payslip.
+
+4. At the setting side , can make a new column at 8+4 & 8+3, which is the day, so the default one for normal is 26, normal OT 26 days, rest day is 4, rest day OT is 4 days, public holiday is 1, public holiday OT is 1 day. Then there is a calcylated gross salary at the end. For this column, it will not update to the setting database, as it just let admin see how mcuh the value might be changed. but for the other column should store in db.

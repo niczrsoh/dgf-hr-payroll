@@ -55,12 +55,16 @@ CREATE TABLE IF NOT EXISTS attendance (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   employee_id UUID NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
   month VARCHAR(7) NOT NULL, -- Format: YYYY-MM
-  attendance_days INTEGER DEFAULT 0,
+  attendance_days DECIMAL(5,2) DEFAULT 0,
   ot_hours DECIMAL(5,2) DEFAULT 0,
   rest_day_hours DECIMAL(5,2) DEFAULT 0,
   public_holiday_hours DECIMAL(5,2) DEFAULT 0,
-  ot_replacement INTEGER DEFAULT 0,
-  unpaid_days INTEGER DEFAULT 0,
+  ot_replacement DECIMAL(5,2) DEFAULT 0,
+  unpaid_days DECIMAL(5,2) DEFAULT 0,
+  mc_days DECIMAL(5,2) DEFAULT 0,
+  annual_leave_days DECIMAL(5,2) DEFAULT 0,
+  hospitalisation_days DECIMAL(5,2) DEFAULT 0,
+  maternity_days DECIMAL(5,2) DEFAULT 0,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   UNIQUE(employee_id, month)
@@ -339,6 +343,19 @@ BEGIN
   -- Add state to branches if missing
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'branches' AND column_name = 'state') THEN
     ALTER TABLE branches ADD COLUMN state VARCHAR(100);
+  END IF;
+
+  -- Convert attendance days to DECIMAL to support half days
+  ALTER TABLE attendance ALTER COLUMN attendance_days TYPE DECIMAL(5,2);
+  ALTER TABLE attendance ALTER COLUMN unpaid_days TYPE DECIMAL(5,2);
+  ALTER TABLE attendance ALTER COLUMN ot_replacement TYPE DECIMAL(5,2);
+
+  -- Add leave columns to attendance if missing
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'attendance' AND column_name = 'mc_days') THEN
+    ALTER TABLE attendance ADD COLUMN mc_days DECIMAL(5,2) DEFAULT 0;
+    ALTER TABLE attendance ADD COLUMN annual_leave_days DECIMAL(5,2) DEFAULT 0;
+    ALTER TABLE attendance ADD COLUMN hospitalisation_days DECIMAL(5,2) DEFAULT 0;
+    ALTER TABLE attendance ADD COLUMN maternity_days DECIMAL(5,2) DEFAULT 0;
   END IF;
 END $$;
 

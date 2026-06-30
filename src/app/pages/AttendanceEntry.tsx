@@ -222,6 +222,10 @@ export default function AttendanceEntry() {
         publicHolidayHours: editingAttendance.publicHolidayHours || 0,
         otReplacement: editingAttendance.otReplacement || 0,
         unpaidDays: editingAttendance.unpaidDays || 0,
+        mcDays: editingAttendance.mcDays || 0,
+        annualLeaveDays: editingAttendance.annualLeaveDays || 0,
+        hospitalisationDays: editingAttendance.hospitalisationDays || 0,
+        maternityDays: editingAttendance.maternityDays || 0,
       };
 
       // Save directly to database
@@ -332,6 +336,10 @@ export default function AttendanceEntry() {
         publicHolidayHours: data.publicHolidayHours || 0,
         otReplacement: data.otReplacement || 0,
         unpaidDays: data.unpaidDays || 0,
+        mcDays: data.mcDays || 0,
+        annualLeaveDays: data.annualLeaveDays || 0,
+        hospitalisationDays: data.hospitalisationDays || 0,
+        maternityDays: data.maternityDays || 0,
       };
       saveAttendance(attendanceData);
     });
@@ -690,14 +698,16 @@ export default function AttendanceEntry() {
                           />
                         </td>
                         <td className="px-4 py-3">
-                          <input
-                            type="number"
-                            min="0"
-                            max="31"
-                            value={editingAttendance.unpaidDays || 0}
-                            onChange={(e) => handleAttendanceFieldChange('unpaidDays', parseInt(e.target.value) || 0)}
-                            className="w-full px-2 py-1 text-center border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                          />
+                          <div className="relative">
+                            <input
+                              type="number"
+                              step="0.5"
+                              value={editingAttendance.unpaidDays || 0}
+                              onChange={(e) => handleAttendanceFieldChange('unpaidDays', parseFloat(e.target.value) || 0)}
+                              className="w-full pl-3 pr-10 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900"
+                            />
+                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-slate-500 font-medium">days</span>
+                          </div>
                         </td>
                         <td className="px-4 py-3 text-center">
                           <span className={`text-xs font-medium ${advanceColor} px-2 py-1 rounded`}>
@@ -707,6 +717,79 @@ export default function AttendanceEntry() {
                       </tr>
                     </tbody>
                   </table>
+                </div>
+
+                {/* Leave Records Grid placed beneath the table */}
+                <div className="mt-8">
+                  <h4 className="text-sm font-semibold text-slate-900 mb-4 flex items-center gap-2">
+                    <CalendarDays className="w-4 h-4 text-slate-500" />
+                    Leave Records
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-500 mb-1.5 uppercase tracking-wider">
+                        Medical Leave (MC)
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          step="0.5"
+                          value={editingAttendance.mcDays || 0}
+                          onChange={(e) => handleAttendanceFieldChange('mcDays', parseFloat(e.target.value) || 0)}
+                          className="w-full pl-3 pr-10 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900"
+                        />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-slate-500 font-medium">days</span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-slate-500 mb-1.5 uppercase tracking-wider">
+                        Annual Leave
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          step="0.5"
+                          value={editingAttendance.annualLeaveDays || 0}
+                          onChange={(e) => handleAttendanceFieldChange('annualLeaveDays', parseFloat(e.target.value) || 0)}
+                          className="w-full pl-3 pr-10 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900"
+                        />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-slate-500 font-medium">days</span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-slate-500 mb-1.5 uppercase tracking-wider">
+                        Hospitalisation
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          step="0.5"
+                          value={editingAttendance.hospitalisationDays || 0}
+                          onChange={(e) => handleAttendanceFieldChange('hospitalisationDays', parseFloat(e.target.value) || 0)}
+                          className="w-full pl-3 pr-10 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900"
+                        />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-slate-500 font-medium">days</span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-slate-500 mb-1.5 uppercase tracking-wider">
+                        Maternity Leave
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          step="0.5"
+                          value={editingAttendance.maternityDays || 0}
+                          onChange={(e) => handleAttendanceFieldChange('maternityDays', parseFloat(e.target.value) || 0)}
+                          className="w-full pl-3 pr-10 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900"
+                        />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-slate-500 font-medium">days</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
 

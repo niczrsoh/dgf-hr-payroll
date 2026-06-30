@@ -9,7 +9,7 @@ interface PayrollPreviewProps {
 }
 
 export default function PayrollPreview({ employee, payroll }: PayrollPreviewProps) {
-  const { dailyAttendance } = usePayroll();
+  const { dailyAttendance, attendance } = usePayroll();
   const monthYear = new Date(payroll.month + '-01').toLocaleDateString('en-MY', {
     month: 'long',
     year: 'numeric',
@@ -182,17 +182,38 @@ export default function PayrollPreview({ employee, payroll }: PayrollPreviewProp
                       <span className="font-medium">RM {(payroll.basicSalary || 0).toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-slate-700">Overtime (OT)</span>
-                      <span className="font-medium">RM {payroll.otPay.toFixed(2)}</span>
+                      <span className="text-slate-700">Normal Day OT</span>
+                      <span className="font-medium">RM {(payroll.otPay || 0).toFixed(2)}</span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-700">Rest Day</span>
-                      <span className="font-medium">RM {payroll.restDayPay.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-700">Public Holiday</span>
-                      <span className="font-medium">RM {payroll.publicHolidayPay.toFixed(2)}</span>
-                    </div>
+                    {(() => {
+                      const att = attendance.find(a => a.employeeId === employee.id && a.month === payroll.month);
+                      const hourlyRate = (payroll.basicSalary / (payroll.daysInMonth || 26)) / 8;
+                      const restDayBasePay = (att?.restDays || 0) * 8 * hourlyRate * (payroll.restDayMultiplier || 1.0);
+                      const restDayOtPay = Math.max(0, payroll.restDayPay - restDayBasePay);
+                      const phBasePay = (att?.publicHolidays || 0) * 8 * hourlyRate * (payroll.publicHolidayMultiplier || 2.0);
+                      const phOtPay = Math.max(0, payroll.publicHolidayPay - phBasePay);
+
+                      return (
+                        <>
+                          <div className="flex justify-between">
+                            <span className="text-slate-700">Rest Day</span>
+                            <span className="font-medium">RM {restDayBasePay.toFixed(2)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-700">Rest Day OT</span>
+                            <span className="font-medium">RM {restDayOtPay.toFixed(2)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-700">Public Holiday</span>
+                            <span className="font-medium">RM {phBasePay.toFixed(2)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-700">Public Holiday OT</span>
+                            <span className="font-medium">RM {phOtPay.toFixed(2)}</span>
+                          </div>
+                        </>
+                      );
+                    })()}
                     <div className="flex justify-between">
                       <span className="text-slate-700">OT Replacement</span>
                       <span className="font-medium">RM {payroll.otReplacementPay.toFixed(2)}</span>
@@ -242,7 +263,10 @@ export default function PayrollPreview({ employee, payroll }: PayrollPreviewProp
                       <span className="font-medium">RM {payroll.advance.toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-slate-700">Unpaid Days</span>
+                      <span className="text-slate-700 flex flex-col">
+                        Unpaid Days
+                        <span className="text-xs text-slate-400 block mt-0.5">({payroll.basicSalary} / {payroll.daysInMonth || 26})</span>
+                      </span>
                       <span className="font-medium">RM {payroll.salaryDeduction.toFixed(2)}</span>
                     </div>
                     {!!payroll.uniformDeduction && payroll.uniformDeduction > 0 && (

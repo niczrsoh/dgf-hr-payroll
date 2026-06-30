@@ -60,7 +60,7 @@ export default function Reporting() {
       branchCode: emp?.branchCode || '-',
       basicSalary: p.basicSalary,
       otPay: p.otPay,
-      allowances: (p.reimbursements || []).reduce((sum, r) => sum + r.amount, 0),
+      reimbursements: (p.reimbursements || []).reduce((sum, r) => sum + r.amount, 0),
       grossEarnings: p.grossEarnings,
       epfEmployee: p.epfEmployee,
       socsoEmployee: p.socsoEmployee,
@@ -309,7 +309,7 @@ export default function Reporting() {
                   <th className="px-6 py-4">Employee</th>
                   <th className="px-6 py-4 text-right">Basic (RM)</th>
                   <th className="px-6 py-4 text-right">OT (RM)</th>
-                  <th className="px-6 py-4 text-right">Allowances</th>
+                  <th className="px-6 py-4 text-right">Reimbursements</th>
                   <th className="px-6 py-4 text-right font-bold border-r border-purple-200">Gross</th>
                   <th className="px-6 py-4 text-right">Deductions</th>
                   <th className="px-6 py-4 text-right font-bold text-blue-900">Net Pay</th>
@@ -327,7 +327,7 @@ export default function Reporting() {
                       </td>
                       <td className="px-6 py-4 text-right">{d.basicSalary.toFixed(2)}</td>
                       <td className="px-6 py-4 text-right">{d.otPay.toFixed(2)}</td>
-                      <td className="px-6 py-4 text-right">{d.allowances.toFixed(2)}</td>
+                      <td className="px-6 py-4 text-right">{d.reimbursements.toFixed(2)}</td>
                       <td className="px-6 py-4 text-right font-bold border-r border-slate-100">{d.grossEarnings.toFixed(2)}</td>
                       <td className="px-6 py-4 text-right text-red-600">-{d.totalDeduction.toFixed(2)}</td>
                       <td className="px-6 py-4 text-right font-bold text-blue-700">{d.netSalary.toFixed(2)}</td>

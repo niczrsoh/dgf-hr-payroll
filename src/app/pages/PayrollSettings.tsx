@@ -163,24 +163,60 @@ export default function PayrollSettings() {
                 <th className="px-4 py-3 font-medium">Hourly Payment Rate</th>
                 <th className="px-4 py-3 font-medium">Multiplier</th>
                 <th className="px-4 py-3 font-medium">Hours</th>
+                <th className="px-4 py-3 font-medium border-l border-slate-200 bg-blue-50/50 text-blue-800">Days (Preview)</th>
+                <th className="px-4 py-3 font-medium bg-blue-50/50 text-blue-800">Estimated Gross (RM)</th>
               </tr>
             </thead>
             <tbody>
-              {parsedData.map((row, index) => (
-                <tr key={index} className="bg-white border-b hover:bg-slate-50">
-                  <td className="px-4 py-2 font-medium border-r">{row.dayType}</td>
-                  <td className="px-4 py-2 border-r">
-                    <input type="number" step="0.0001" value={row.hourlyRate} onChange={(e) => handleTableChange(index, 'hourlyRate', parseFloat(e.target.value))} className="w-full px-2 py-1 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
-                  </td>
-                  <td className="px-4 py-2 border-r">
-                    <input type="number" step="0.01" value={row.multiplier} onChange={(e) => handleTableChange(index, 'multiplier', parseFloat(e.target.value))} className="w-full px-2 py-1 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
-                  </td>
-                  <td className="px-4 py-2">
-                    <input type="number" step="0.01" value={row.hours} onChange={(e) => handleTableChange(index, 'hours', parseFloat(e.target.value))} className="w-full px-2 py-1 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
-                  </td>
-                </tr>
-              ))}
+              {parsedData.map((row, index) => {
+                const getDefaultDays = (dayType: string) => {
+                  if (dayType === 'Normal Day' || dayType === 'Normal Day OT') return 26;
+                  if (dayType === 'Rest Day' || dayType === 'Rest Day OT') return 4;
+                  if (dayType === 'Public Holiday' || dayType === 'Public Holiday OT') return 1;
+                  return 0;
+                };
+                
+                const previewDays = getDefaultDays(row.dayType);
+                const estimatedGross = previewDays * (row.hourlyRate || 0) * (row.multiplier || 0) * (row.hours || 0);
+
+                return (
+                  <tr key={index} className="bg-white border-b hover:bg-slate-50">
+                    <td className="px-4 py-2 font-medium border-r">{row.dayType}</td>
+                    <td className="px-4 py-2 border-r">
+                      <input type="number" step="0.0001" value={row.hourlyRate} onChange={(e) => handleTableChange(index, 'hourlyRate', parseFloat(e.target.value))} className="w-full px-2 py-1 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
+                    </td>
+                    <td className="px-4 py-2 border-r">
+                      <input type="number" step="0.01" value={row.multiplier} onChange={(e) => handleTableChange(index, 'multiplier', parseFloat(e.target.value))} className="w-full px-2 py-1 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
+                    </td>
+                    <td className="px-4 py-2">
+                      <input type="number" step="0.01" value={row.hours} onChange={(e) => handleTableChange(index, 'hours', parseFloat(e.target.value))} className="w-full px-2 py-1 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
+                    </td>
+                    <td className="px-4 py-2 border-l border-slate-200 bg-blue-50/30 text-center font-medium text-slate-700">
+                      {previewDays}
+                    </td>
+                    <td className="px-4 py-2 bg-blue-50/30 font-mono text-blue-900 font-semibold text-right">
+                      {estimatedGross.toFixed(2)}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
+            <tfoot className="bg-blue-50/50 border-t border-slate-200 font-semibold text-blue-900">
+              <tr>
+                <td colSpan={5} className="px-4 py-3 text-right">Total Estimated Gross (RM):</td>
+                <td className="px-4 py-3 text-right font-mono text-base">
+                  {parsedData.reduce((sum, row) => {
+                    const days = (() => {
+                      if (row.dayType === 'Normal Day' || row.dayType === 'Normal Day OT') return 26;
+                      if (row.dayType === 'Rest Day' || row.dayType === 'Rest Day OT') return 4;
+                      if (row.dayType === 'Public Holiday' || row.dayType === 'Public Holiday OT') return 1;
+                      return 0;
+                    })();
+                    return sum + (days * (row.hourlyRate || 0) * (row.multiplier || 0) * (row.hours || 0));
+                  }, 0).toFixed(2)}
+                </td>
+              </tr>
+            </tfoot>
           </table>
         </div>
       </div>

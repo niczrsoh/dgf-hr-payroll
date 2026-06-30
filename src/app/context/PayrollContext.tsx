@@ -54,11 +54,18 @@ export interface Attendance {
   employeeId: string;
   month: string;
   attendanceDays: number;
+  normalDays?: number;
+  restDays?: number;
+  publicHolidays?: number;
   otHours: number;
   restDayHours: number;
   publicHolidayHours: number;
   otReplacement: number;
   unpaidDays: number;
+  mcDays?: number;
+  annualLeaveDays?: number;
+  hospitalisationDays?: number;
+  maternityDays?: number;
 }
 
 export interface DailyAttendance {
@@ -67,9 +74,10 @@ export interface DailyAttendance {
   date: string; // YYYY-MM-DD
   dayType: 'Normal Day' | 'Rest Day' | 'Public Holiday';
   otHours: number;
-  leaveType: 'None' | 'Annual' | 'Maternity' | 'MC' | 'Hospitalization';
   leavePaid: boolean;
   overrideLog?: string;
+  duration?: number;
+  hasOT?: boolean;
 }
 
 export interface AttendanceCycle {
@@ -218,7 +226,9 @@ interface PayrollContextType {
   generatePaymentList: (employeeIds: string[], month: string) => void;
   confirmPayment: (employeeIds: string[], month: string) => void;
   markAsPaid: (employeeIds: string[], month: string) => void;
+  revertPayrollToDraft: (employeeId: string, month: string) => void;
   updateSettings: (settings: Partial<PayrollSettings>) => void;
+  getCalculatedAttendance: (employeeId: string, month: string) => Attendance;
 }
 
 const PayrollContext = createContext<PayrollContextType | undefined>(undefined);
@@ -1336,29 +1346,53 @@ export const PayrollProvider: React.FC<{ children: React.ReactNode }> = ({ child
       // Generate monthly attendance from daily records
       let monthAttendance: Attendance[] = employees.map(emp => {
         const empDaily = dailyAttendance.filter(d => d.employeeId === emp.id && d.date.startsWith(month));
-        
-        let attendanceDays = 0;
-        
-        empDaily.forEach(record => {
-          if (record.leaveType !== 'None') {
-            if (record.leavePaid) attendanceDays++;
-          } else {
-            attendanceDays++;
-          }
-        });
-        
         const legacy = attendance.find(a => a.employeeId === emp.id && a.month === month);
         
         if (empDaily.length > 0) {
+          let attendanceDays = 0, normalDays = 0, restDays = 0, publicHolidays = 0;
+          let otHours = 0, restDayHours = 0, publicHolidayHours = 0;
+          let unpaidDays = 0, mcDays = 0, annualLeaveDays = 0, hospitalisationDays = 0, maternityDays = 0;
+          
+          empDaily.forEach(record => {
+            const duration = record.duration || 1;
+            if (record.leaveType !== 'None') {
+              if (record.leaveType !== 'Rest') {
+                if (!record.leavePaid) unpaidDays += duration;
+                else {
+                  attendanceDays += duration;
+                  if (record.leaveType === 'MC') mcDays += duration;
+                  if (record.leaveType === 'Annual') annualLeaveDays += duration;
+                  if (record.leaveType === 'Hospitalization') hospitalisationDays += duration;
+                  if (record.leaveType === 'Maternity') maternityDays += duration;
+                }
+              }
+            } else {
+              attendanceDays += duration;
+              if (record.dayType === 'Normal Day') normalDays += duration;
+              if (record.dayType === 'Rest Day') restDays += duration;
+              if (record.dayType === 'Public Holiday') publicHolidays += duration;
+            }
+            if (record.dayType === 'Normal Day') otHours += record.otHours;
+            else if (record.dayType === 'Rest Day') restDayHours += record.otHours;
+            else if (record.dayType === 'Public Holiday') publicHolidayHours += record.otHours;
+          });
+
           return {
             employeeId: emp.id,
             month,
             attendanceDays,
-            otHours: 0,
-            restDayHours: 0,
-            publicHolidayHours: 0,
-            otReplacement: 0,
-            unpaidDays: 0
+            normalDays,
+            restDays,
+            publicHolidays,
+            otHours,
+            restDayHours,
+            publicHolidayHours,
+            otReplacement: legacy?.otReplacement || 0,
+            unpaidDays,
+            mcDays,
+            annualLeaveDays,
+            hospitalisationDays,
+            maternityDays
           };
         }
         
@@ -1366,11 +1400,18 @@ export const PayrollProvider: React.FC<{ children: React.ReactNode }> = ({ child
           employeeId: emp.id,
           month,
           attendanceDays: 0,
+          normalDays: 0,
+          restDays: 0,
+          publicHolidays: 0,
           otHours: 0,
           restDayHours: 0,
           publicHolidayHours: 0,
           otReplacement: 0,
-          unpaidDays: 0
+          unpaidDays: 0,
+          mcDays: 0,
+          annualLeaveDays: 0,
+          hospitalisationDays: 0,
+          maternityDays: 0
         };
       });
 
@@ -1597,44 +1638,109 @@ export const PayrollProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const yy = parseInt(yyStr, 10);
     if (isNaN(yy)) return 30;
     
-    const currentYY = currentYear % 100;
+const currentYY = currentYear % 100;
     const yearOfBirth = yy <= currentYY ? 2000 + yy : 1900 + yy;
     return currentYear - yearOfBirth;
   };
 
+  const getCalculatedAttendance = (employeeId: string, month: string): Attendance => {
+    const emp = employees.find(e => e.id === employeeId);
+    if (!emp) {
+      return {
+        employeeId, month, attendanceDays: 0, normalDays: 0, otHours: 0, restDayHours: 0,
+        publicHolidayHours: 0, otReplacement: 0, unpaidDays: 0, mcDays: 0, annualLeaveDays: 0, hospitalisationDays: 0, maternityDays: 0
+      };
+    }
+
+    const empDaily = dailyAttendance.filter(d => d.employeeId === emp.id && d.date.startsWith(month));
+    const project = emp.projectId ? projects.find(p => p.id === emp.projectId) : null;
+    const standardOtHoursPerDay = project?.payStructure === '8+3' ? 3 : 4;
+
+    if (empDaily.length > 0) {
+      let attendanceDays = 0, normalDays = 0, restDays = 0, publicHolidays = 0;
+      let otHours = 0, restDayHours = 0, publicHolidayHours = 0;
+      let unpaidDays = 0, mcDays = 0, annualLeaveDays = 0, hospitalisationDays = 0, maternityDays = 0;
+
+      empDaily.forEach(record => {
+        const duration = record.duration || 1;
+        if (record.leaveType !== 'None') {
+          if (record.leaveType !== 'Rest') {
+            if (!record.leavePaid) unpaidDays += duration;
+            else {
+              attendanceDays += duration;
+              if (record.leaveType === 'MC') mcDays += duration;
+              if (record.leaveType === 'Annual') annualLeaveDays += duration;
+              if (record.leaveType === 'Hospitalization') hospitalisationDays += duration;
+              if (record.leaveType === 'Maternity') maternityDays += duration;
+            }
+          }
+        } else {
+          attendanceDays += duration;
+          if (record.dayType === 'Normal Day') normalDays += duration;
+          if (record.dayType === 'Rest Day') restDays += duration;
+          if (record.dayType === 'Public Holiday') publicHolidays += duration;
+        }
+        if (record.dayType === 'Normal Day') otHours += record.otHours / standardOtHoursPerDay;
+        else if (record.dayType === 'Rest Day') restDayHours += record.otHours / standardOtHoursPerDay;
+        else if (record.dayType === 'Public Holiday') publicHolidayHours += record.otHours / standardOtHoursPerDay;
+      });
+
+      return { 
+        employeeId: emp.id, 
+        month, 
+        attendanceDays, 
+        normalDays, 
+        restDays, 
+        publicHolidays, 
+        otHours, 
+        restDayHours, 
+        publicHolidayHours, 
+        otReplacement: 0, 
+        unpaidDays, 
+        mcDays, 
+        annualLeaveDays, 
+        hospitalisationDays, 
+        maternityDays 
+      };
+    }
+
+    const legacy = attendance.find(a => a.employeeId === emp.id && a.month === month);
+    
+    const migrateOt = (val: number | undefined, defaultVal: number) => {
+      if (val === undefined) return defaultVal;
+      return val > 31 ? val / 8 : val;
+    };
+
+    if (legacy) {
+      const normalDays = legacy.normalDays || legacy.attendanceDays || 0;
+      return { 
+        employeeId: emp.id, 
+        month, 
+        attendanceDays: legacy.attendanceDays ?? 0, 
+        normalDays: normalDays, 
+        restDays: legacy.restDays ?? 0, 
+        publicHolidays: legacy.publicHolidays ?? 0, 
+        otHours: migrateOt(legacy.otHours, 0), 
+        restDayHours: migrateOt(legacy.restDayHours, 0), 
+        publicHolidayHours: migrateOt(legacy.publicHolidayHours, 0), 
+        otReplacement: legacy.otReplacement ?? 0, 
+        unpaidDays: legacy.unpaidDays ?? 0, 
+        mcDays: legacy.mcDays ?? 0, 
+        annualLeaveDays: legacy.annualLeaveDays ?? 0, 
+        hospitalisationDays: legacy.hospitalisationDays ?? 0, 
+        maternityDays: legacy.maternityDays ?? 0 
+      };
+    }
+
+    return {
+      employeeId: emp.id, month, attendanceDays: 0, normalDays: 0, otHours: 0, restDayHours: 0,
+      publicHolidayHours: 0, otReplacement: 0, unpaidDays: 0, mcDays: 0, annualLeaveDays: 0, hospitalisationDays: 0, maternityDays: 0
+    };
+  };
+
   const generatePayroll = (month: string, branchCode?: string, dryRun: boolean = false): PayrollRecord[] | void => {
     // ── Step 1: Build attendance from daily records or legacy monthly ─────────
-    const monthAttendance: Attendance[] = employees.map(emp => {
-      const empDaily = dailyAttendance.filter(d => d.employeeId === emp.id && d.date.startsWith(month));
-
-      if (empDaily.length > 0) {
-        let attendanceDays = 0;
-        let otHours = 0;
-        let restDayHours = 0;
-        let publicHolidayHours = 0;
-        let unpaidDays = 0;
-
-        empDaily.forEach(record => {
-          if (record.leaveType !== 'None') {
-            if (!record.leavePaid) unpaidDays++;
-            else attendanceDays++;
-          } else {
-            attendanceDays++;
-          }
-          if (record.dayType === 'Normal Day') otHours += record.otHours;
-          else if (record.dayType === 'Rest Day') restDayHours += record.otHours;
-          else if (record.dayType === 'Public Holiday') publicHolidayHours += record.otHours;
-        });
-
-        const legacy = attendance.find(a => a.employeeId === emp.id && a.month === month);
-        return { employeeId: emp.id, month, attendanceDays, otHours, restDayHours, publicHolidayHours, otReplacement: legacy?.otReplacement || 0, unpaidDays };
-      }
-
-      return attendance.find(a => a.employeeId === emp.id && a.month === month) || {
-        employeeId: emp.id, month, attendanceDays: 0, otHours: 0, restDayHours: 0,
-        publicHolidayHours: 0, otReplacement: 0, unpaidDays: 0
-      };
-    });
+    const monthAttendance: Attendance[] = employees.map(emp => getCalculatedAttendance(emp.id, month));
 
     const filteredAttendance = branchCode
       ? monthAttendance.filter(a => employees.find(e => e.id === a.employeeId)?.branchCode === branchCode)
@@ -1663,7 +1769,7 @@ export const PayrollProvider: React.FC<{ children: React.ReactNode }> = ({ child
       return filteredAttendance.map(att => {
         const employee = employees.find(e => e.id === att.employeeId);
         if (!employee || employee.archivedDate) return null;
-        if (employee.createdDate && employee.createdDate > month + '-01') return null;
+        if (employee.createdDate && employee.createdDate.substring(0, 7) > month) return null;
 
         const existingPayroll = payrolls.find(p => p.employeeId === att.employeeId && p.month === month);
         const advance = advances.find(a => a.employeeId === att.employeeId && a.month === month);
@@ -1685,17 +1791,25 @@ export const PayrollProvider: React.FC<{ children: React.ReactNode }> = ({ child
         const unpaidDeduction = dailyRate * att.unpaidDays;
 
         // ── Step 4: Calculate all wage components ─────────────────────────────
+        const standardOtHoursPerDay = payStructure === '8+3' ? 3 : 4;
+        
         // Normal Day OT: hours × hourlyRate × multiplier (1.5× by default, or overridden by project)
         const normalOtMult = project?.customOtMultiplier ?? (getTableMultiplier(table, 'Normal Day OT') || 1.5);
-        const otPay = att.otHours * hourlyRate * normalOtMult;
+        const otPay = att.otHours * standardOtHoursPerDay * hourlyRate * normalOtMult;
 
-        // Rest Day: hours × hourlyRate × multiplier (1.0×)
+        // Rest Day
         const restDayMult = getTableMultiplier(table, 'Rest Day') || 1.0;
-        const restDayPay = att.restDayHours * hourlyRate * restDayMult;
+        const restDayOtMult = getTableMultiplier(table, 'Rest Day OT') || 2.0;
+        const restDayBasePay = (att.restDays || 0) * 8 * hourlyRate * restDayMult;
+        const restDayOtPay = att.restDayHours * standardOtHoursPerDay * hourlyRate * restDayOtMult;
+        const restDayPay = restDayBasePay + restDayOtPay;
 
-        // Public Holiday: hours × hourlyRate × multiplier (2.0×)
+        // Public Holiday
         const phMult = getTableMultiplier(table, 'Public Holiday') || 2.0;
-        const publicHolidayPay = att.publicHolidayHours * hourlyRate * phMult;
+        const phOtMult = getTableMultiplier(table, 'Public Holiday OT') || 3.0;
+        const phBasePay = (att.publicHolidays || 0) * 8 * hourlyRate * phMult;
+        const phOtPay = att.publicHolidayHours * standardOtHoursPerDay * hourlyRate * phOtMult;
+        const publicHolidayPay = phBasePay + phOtPay;
 
         // OT Replacement (day-off in lieu): 1 day's pay = basic/26 per the flowchart note
         const otReplacementPay = att.otReplacement * (basicSalary / 26);
@@ -1704,7 +1818,7 @@ export const PayrollProvider: React.FC<{ children: React.ReactNode }> = ({ child
         let reimbursements = existingPayroll?.reimbursements || [];
         
         // Auto-add Uniform reimbursement if it's their first month and first time generating
-        if (emp.createdDate && emp.createdDate.startsWith(month) && !existingPayroll) {
+        if (employee.createdDate && employee.createdDate.startsWith(month) && !existingPayroll) {
           reimbursements = [...reimbursements, { type: 'Uniform', amount: settings.defaultUniformReimbursement || 100 }];
         }
         
@@ -1745,9 +1859,7 @@ export const PayrollProvider: React.FC<{ children: React.ReactNode }> = ({ child
         // ── Step 9: Anomaly Detection ─────────────────────────────────────────
         const anomalies: string[] = [];
 
-        const mcDays = dailyAttendance.filter(
-          d => d.employeeId === employee.id && d.date.startsWith(month) && d.leaveType === 'MC'
-        ).length;
+        const mcDays = att.mcDays || 0;
         const mcLimit = settings.mcDays || 14;
         if (mcDays > mcLimit) anomalies.push(`MC Overage (${mcDays}/${mcLimit} days)`);
 
@@ -1873,6 +1985,24 @@ export const PayrollProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }));
 
     // Save to database
+    if (updatedPayroll) {
+      db.savePayrollRecord(updatedPayroll).catch(err => {
+        console.error('Failed to save payroll to database:', err);
+      });
+    }
+  };
+
+  const revertPayrollToDraft = (employeeId: string, month: string) => {
+    let updatedPayroll: PayrollRecord | null = null;
+
+    setPayrolls(prevPayrolls => prevPayrolls.map(p => {
+      if (p.employeeId === employeeId && p.month === month) {
+        updatedPayroll = { ...p, status: 'Draft' as const };
+        return updatedPayroll;
+      }
+      return p;
+    }));
+
     if (updatedPayroll) {
       db.savePayrollRecord(updatedPayroll).catch(err => {
         console.error('Failed to save payroll to database:', err);
@@ -2055,10 +2185,12 @@ export const PayrollProvider: React.FC<{ children: React.ReactNode }> = ({ child
         approvePayroll,
         payPayroll,
         updatePayroll,
+        revertPayrollToDraft,
         generatePaymentList,
         confirmPayment,
         markAsPaid,
         updateSettings,
+        getCalculatedAttendance,
       }}
     >
       {children}
