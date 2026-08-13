@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { X, Plus, Trash2, Save } from 'lucide-react';
-import { Employee, PayrollRecord } from '../context/PayrollContext';
+import { Employee, PayrollRecord, usePayroll } from '../context/PayrollContext';
 
 interface PayrollAdjustmentsModalProps {
   employee: Employee;
@@ -10,6 +10,7 @@ interface PayrollAdjustmentsModalProps {
 }
 
 export default function PayrollAdjustmentsModal({ employee, payroll, onSave, onClose }: PayrollAdjustmentsModalProps) {
+  const { settings } = usePayroll();
   const [reimbursements, setReimbursements] = useState<{type: string, amount: number}[]>(
     payroll.reimbursements || []
   );
@@ -71,22 +72,18 @@ export default function PayrollAdjustmentsModal({ employee, payroll, onSave, onC
                 {reimbursements.map((r, index) => (
                   <div key={index} className="flex items-center gap-3">
                     <div className="flex-1">
-                      <input
-                        type="text"
-                        list="reimbursement-types"
+                      <select
                         value={r.type}
                         onChange={(e) => updateReimbursement(index, 'type', e.target.value)}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
-                        placeholder="e.g. Travel, Tools"
-                      />
-                      <datalist id="reimbursement-types">
-                        <option value="Travel Reimbursement" />
-                        <option value="Mileage" />
-                        <option value="Meal Reimbursement" />
-                        <option value="Tools Reimbursement" />
-                        <option value="Commuter Benefit" />
-                        <option value="Other" />
-                      </datalist>
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 bg-white"
+                      >
+                        <option value="Travel Reimbursement">Travel Reimbursement</option>
+                        <option value="Mileage">Mileage</option>
+                        <option value="Meal Reimbursement">Meal Reimbursement</option>
+                        <option value="Tools Reimbursement">Tools Reimbursement</option>
+                        <option value="Commuter Benefit">Commuter Benefit</option>
+                        <option value="Other">Other</option>
+                      </select>
                     </div>
                     <div className="relative w-32">
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">RM</span>
@@ -117,37 +114,39 @@ export default function PayrollAdjustmentsModal({ employee, payroll, onSave, onC
           {/* Deductions Section */}
           <div>
             <h3 className="font-semibold text-slate-900 mb-4">Manual Deductions</h3>
-            <div className="bg-orange-50 p-4 rounded-lg border border-orange-100">
-              <label className="block text-sm font-medium text-slate-700 mb-1">
-                Uniform Deduction
-              </label>
-              <div className="relative w-48">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">RM</span>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={uniformDeduction || ''}
-                  onChange={(e) => setUniformDeduction(parseFloat(e.target.value) || 0)}
-                  className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 bg-white"
-                  placeholder="0.00"
-                />
+            <div className="bg-orange-50 p-4 rounded-lg border border-orange-100 flex items-start gap-3">
+              <input
+                type="checkbox"
+                id="uniformDeduction"
+                checked={uniformDeduction > 0}
+                onChange={(e) => setUniformDeduction(e.target.checked ? (settings.defaultUniformDeduction || 100) : 0)}
+                className="mt-1 w-4 h-4 text-orange-600 rounded border-orange-300 focus:ring-orange-500"
+              />
+              <div>
+                <label htmlFor="uniformDeduction" className="block text-sm font-medium text-slate-700">
+                  Apply Default Uniform Deduction
+                </label>
+                <div className="text-sm font-semibold text-orange-700 mt-1">
+                  RM {(settings.defaultUniformDeduction || 100).toFixed(2)}
+                </div>
+                <p className="text-xs text-slate-500 mt-1">
+                  Deducted from net pay for uniform or equipment costs.
+                </p>
               </div>
-              <p className="text-xs text-slate-500 mt-2">
-                Deducted from net pay for uniform or equipment costs.
-              </p>
             </div>
           </div>
         </div>
 
         <div className="p-4 border-t border-slate-200 bg-slate-50 flex justify-end gap-3">
           <button
+            type="button"
             onClick={onClose}
             className="px-4 py-2 text-slate-600 font-medium hover:bg-slate-200 rounded-lg transition-colors"
           >
             Cancel
           </button>
           <button
+            type="button"
             onClick={handleSave}
             className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
           >

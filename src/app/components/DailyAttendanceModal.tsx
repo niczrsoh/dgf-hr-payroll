@@ -5,8 +5,10 @@ import { Employee, DailyAttendance, Branch, Project } from '../context/PayrollCo
 import { toast } from 'sonner';
 
 interface DailyAttendanceModalProps {
-  date: string;
-  dayType: 'Normal Day' | 'Rest Day' | 'Public Holiday';
+  date?: string;
+  dayType?: 'Normal Day' | 'Rest Day' | 'Public Holiday';
+  dates?: string[];
+  getDayType?: (date: string) => 'Normal Day' | 'Rest Day' | 'Public Holiday';
   employees: Employee[];
   branches: Branch[];
   projects: Project[];
@@ -18,6 +20,8 @@ interface DailyAttendanceModalProps {
 export default function DailyAttendanceModal({
   date,
   dayType,
+  dates,
+  getDayType,
   employees,
   branches,
   projects,
@@ -26,6 +30,9 @@ export default function DailyAttendanceModal({
   onClose
 }: DailyAttendanceModalProps) {
   const { settings } = usePayroll();
+  const selectedDates = dates && dates.length > 0 ? dates : (date ? [date] : []);
+  const primaryDate = selectedDates[0] || new Date().toISOString().slice(0, 10);
+  const primaryDayType = dayType || getDayType?.(primaryDate) || 'Normal Day';
   const [selectedBranch, setSelectedBranch] = useState<string>('ALL');
   const [selectedProject, setSelectedProject] = useState<string>('ALL');
   const [searchTerm, setSearchTerm] = useState('');
@@ -39,7 +46,7 @@ export default function DailyAttendanceModal({
   // Filter employees
   const filteredEmployees = employees.filter(emp => {
     if (emp.archivedDate) return false;
-    if (emp.createdDate && emp.createdDate > date) return false;
+    if (emp.createdDate && emp.createdDate > primaryDate) return false;
     
     const matchesBranch = selectedBranch === 'ALL' || emp.branchCode === selectedBranch;
     const matchesProject = selectedProject === 'ALL' || emp.projectId === selectedProject;
@@ -48,30 +55,35 @@ export default function DailyAttendanceModal({
     return matchesBranch && matchesProject && matchesSearch;
   });
 
-  const getRecord = (empId: string): DailyAttendance => {
+  const getRecord = (empId: string, recordDate = primaryDate): DailyAttendance => {
+    const recordDayType = getDayType?.(recordDate) || primaryDayType;
     // Check local edits first
     if (edits[empId]) {
-      return {
-        id: `${empId}_${date}`,
+      const record = {
+        id: `${empId}_${recordDate}`,
         employeeId: empId,
-        date,
-        dayType,
+        date: recordDate,
+        dayType: recordDayType,
         otHours: 0,
-        leaveType: dayType === 'Normal Day' ? 'None' : 'Rest',
+        leaveType: 'None' as const,
         leavePaid: false,
-        ...dailyRecords.find(r => r.id === `${empId}_${date}`),
+        ...dailyRecords.find(r => r.id === `${empId}_${recordDate}`),
         ...edits[empId]
       };
+      return record.leaveType === 'Rest' ? { ...record, leaveType: 'None', hasOT: true } : record;
     }
     // Check global state
-    const existing = dailyRecords.find(r => r.id === `${empId}_${date}`);
-    return existing || {
-      id: `${empId}_${date}`,
+    const existing = dailyRecords.find(r => r.id === `${empId}_${recordDate}`);
+    if (existing) {
+      return existing.leaveType === 'Rest' ? { ...existing, leaveType: 'None', hasOT: true } : existing;
+    }
+    return {
+      id: `${empId}_${recordDate}`,
       employeeId: empId,
-      date,
-      dayType,
+      date: recordDate,
+      dayType: recordDayType,
       otHours: 0,
-      leaveType: dayType === 'Normal Day' ? 'None' : 'Rest',
+      leaveType: 'None',
       leavePaid: false
     };
   };
@@ -90,15 +102,15 @@ export default function DailyAttendanceModal({
     if (leaveType === 'None' || leaveType === 'Unpaid Leave') return { allowed: true, paid: false, reason: '' };
     
     // Check previous records in the year
-    const year = date.substring(0, 4);
-    const yearRecords = dailyRecords.filter(r => r.employeeId === emp.id && r.date.startsWith(year) && r.date !== date);
+    const year = primaryDate.substring(0, 4);
+    const yearRecords = dailyRecords.filter(r => r.employeeId === emp.id && r.date.startsWith(year) && r.date !== primaryDate);
     
     if (leaveType === 'Annual') {
       let allowedAnnualLeave = settings.annualLeaveDays;
 
       if (settings.annualLeaveProRata) {
-        const createdDate = new Date(emp.createdDate || date);
-        const currentDate = new Date(date);
+        const createdDate = new Date(emp.createdDate || primaryDate);
+        const currentDate = new Date(primaryDate);
         const monthsWorked = Math.max(0, (currentDate.getFullYear() - createdDate.getFullYear()) * 12 + (currentDate.getMonth() - createdDate.getMonth()));
         
         allowedAnnualLeave = Math.floor((settings.annualLeaveDays / 12) * Math.max(1, monthsWorked));
@@ -139,7 +151,7 @@ export default function DailyAttendanceModal({
   };
 
   const getLeaveBalances = (emp: Employee) => {
-    const year = date.substring(0, 4);
+    const year = primaryDate.substring(0, 4);
     const yearRecords = dailyRecords.filter(r => r.employeeId === emp.id && r.date.startsWith(year));
     
     const annualTaken = yearRecords.filter(r => r.leaveType === 'Annual' && r.leavePaid).reduce((sum, r) => sum + (r.duration || 1), 0);
@@ -149,8 +161,8 @@ export default function DailyAttendanceModal({
     let allowedAnnualLeave = settings.annualLeaveDays;
 
     if (settings.annualLeaveProRata) {
-      const createdDate = new Date(emp.createdDate || date);
-      const currentDate = new Date(date);
+      const createdDate = new Date(emp.createdDate || primaryDate);
+      const currentDate = new Date(primaryDate);
       const monthsWorked = Math.max(0, (currentDate.getFullYear() - createdDate.getFullYear()) * 12 + (currentDate.getMonth() - createdDate.getMonth()));
       allowedAnnualLeave = Math.floor((settings.annualLeaveDays / 12) * Math.max(1, monthsWorked));
     }
@@ -236,12 +248,19 @@ export default function DailyAttendanceModal({
         }
       }
       
-      finalRecords.push(record);
+      selectedDates.forEach(recordDate => {
+        finalRecords.push({
+          ...record,
+          id: `${empId}_${recordDate}`,
+          date: recordDate,
+          dayType: getDayType?.(recordDate) || primaryDayType
+        });
+      });
     });
     
     if (finalRecords.length > 0) {
       onSave(finalRecords);
-      toast.success(`Saved attendance for ${finalRecords.length} employees on ${date}`);
+      toast.success(`Saved ${finalRecords.length} attendance record(s) for ${selectedDates.length} day(s).`);
     }
     onClose();
   };
@@ -253,15 +272,17 @@ export default function DailyAttendanceModal({
         <div className="flex items-center justify-between p-6 border-b border-slate-200">
           <div>
             <h2 className="text-2xl font-bold text-slate-900">
-              Daily Attendance: {new Date(date).toLocaleDateString('en-MY', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+              {selectedDates.length > 1
+                ? `Daily Attendance: ${selectedDates.length} selected days`
+                : `Daily Attendance: ${new Date(primaryDate).toLocaleDateString('en-MY', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`}
             </h2>
             <div className="flex items-center gap-2 mt-2">
               <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
-                dayType === 'Public Holiday' ? 'bg-red-100 text-red-700' :
-                dayType === 'Rest Day' ? 'bg-amber-100 text-amber-700' :
+                primaryDayType === 'Public Holiday' ? 'bg-red-100 text-red-700' :
+                primaryDayType === 'Rest Day' ? 'bg-amber-100 text-amber-700' :
                 'bg-blue-100 text-blue-700'
               }`}>
-                {dayType}
+                {selectedDates.length > 1 ? 'Multiple Day Types' : primaryDayType}
               </span>
             </div>
           </div>
@@ -351,14 +372,14 @@ export default function DailyAttendanceModal({
                 // Salary Calculation
                 const dailyBasic = emp.basicSalary / 26;
                 let mult = 1.5;
-                if (dayType === 'Rest Day') mult = 2.0;
-                if (dayType === 'Public Holiday') mult = 3.0;
+                if (primaryDayType === 'Rest Day') mult = 2.0;
+                if (primaryDayType === 'Public Holiday') mult = 3.0;
                 
                 try {
                   const tableData = project?.payStructure === '8+3' ? settings.eightPlusThreeData : settings.eightPlusFourData;
                   if (tableData) {
                     const table = JSON.parse(tableData);
-                    const rowType = dayType === 'Normal Day' ? 'Normal Day OT' : dayType === 'Rest Day' ? 'Rest Day OT' : 'Public Holiday OT';
+                    const rowType = primaryDayType === 'Normal Day' ? 'Normal Day OT' : primaryDayType === 'Rest Day' ? 'Rest Day OT' : 'Public Holiday OT';
                     const row = table.find((r: any) => r.dayType === rowType);
                     if (row && row.multiplier) {
                       mult = parseFloat(row.multiplier);
@@ -366,7 +387,7 @@ export default function DailyAttendanceModal({
                   }
                 } catch(e) {}
 
-                if (dayType === 'Normal Day' && project?.customOtMultiplier) {
+                if (primaryDayType === 'Normal Day' && project?.customOtMultiplier) {
                   mult = project.customOtMultiplier;
                 }
                 
@@ -424,7 +445,7 @@ export default function DailyAttendanceModal({
                               <div className="text-[10px] text-blue-600 font-medium bg-blue-50 px-2 py-0.5 rounded">
                                 Auto: {project.payStructure === '8+4' ? '4' : '3'} hrs OT
                               </div>
-                              <div className={`text-[10px] font-medium px-2 py-0.5 rounded ${project.customOtMultiplier && dayType === 'Normal Day' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>
+                              <div className={`text-[10px] font-medium px-2 py-0.5 rounded ${project.customOtMultiplier && primaryDayType === 'Normal Day' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>
                                 @ {mult}x
                               </div>
                             </div>
@@ -437,37 +458,23 @@ export default function DailyAttendanceModal({
                     <td className="px-6 py-3">
                       <div className="flex flex-col gap-1.5">
                         <select
-                          value={record.leaveType === 'None' && record.hasOT !== false ? 'None' : (record.leaveType === 'Rest' || (record.leaveType === 'None' && record.hasOT === false) ? 'Rest' : record.leaveType)}
+                          value={record.leaveType === 'Rest' ? 'None' : record.leaveType}
                           onChange={(e) => {
                             const val = e.target.value;
-                            if (val === 'Rest') {
-                              handleFieldChange(emp.id, 'leaveType', 'Rest');
-                              handleFieldChange(emp.id, 'hasOT', false);
-                            } else {
-                              handleFieldChange(emp.id, 'leaveType', val);
-                              if (val === 'None') handleFieldChange(emp.id, 'hasOT', true);
-                              if (val !== 'None' && record.duration === undefined) {
-                                handleFieldChange(emp.id, 'duration', 1);
-                              }
+                            handleFieldChange(emp.id, 'leaveType', val);
+                            if (val === 'None') handleFieldChange(emp.id, 'hasOT', true);
+                            if (val !== 'None' && record.duration === undefined) {
+                              handleFieldChange(emp.id, 'duration', 1);
                             }
                           }}
                           className="w-48 px-3 py-1.5 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 text-sm"
                         >
-                          {dayType === 'Normal Day' ? (
-                            <>
-                              <option value="None">Working (Present)</option>
-                              <option value="Annual">Annual Leave</option>
-                              <option value="MC">Medical Leave (MC)</option>
-                              <option value="Hospitalization">Hospitalization</option>
-                              <option value="Maternity">Maternity Leave</option>
-                              <option value="Unpaid Leave">Unpaid Leave</option>
-                            </>
-                          ) : (
-                            <>
-                              <option value="None">Working</option>
-                              <option value="Rest">Non-working</option>
-                            </>
-                          )}
+                          <option value="None">Working (Present)</option>
+                          <option value="Annual">Annual Leave</option>
+                          <option value="MC">Medical Leave (MC)</option>
+                          <option value="Hospitalization">Hospitalization</option>
+                          <option value="Maternity">Maternity Leave</option>
+                          <option value="Unpaid Leave">Unpaid Leave</option>
                         </select>
                         
                         {record.leaveType !== 'None' && record.leaveType !== 'Rest' && (

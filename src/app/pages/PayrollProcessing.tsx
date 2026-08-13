@@ -7,6 +7,7 @@ import EmployeeListPanel from '../components/EmployeeListPanel';
 import PayrollWorkspace from '../components/PayrollWorkspace';
 import PayslipModal from '../components/PayslipModal';
 import PayrollGeneratePreview from '../components/PayrollGeneratePreview';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 export default function PayrollProcessing() {
   const { 
@@ -14,8 +15,6 @@ export default function PayrollProcessing() {
     branches, 
     projects,
     payrolls, 
-    attendance, 
-    dailyAttendance,
     advances,
     generatePayroll, 
     finalizePayroll,
@@ -23,10 +22,11 @@ export default function PayrollProcessing() {
     updatePayroll,
     revertPayrollToDraft,
     updatePayrollAdjustments,
-    saveAttendance
+    saveAttendance,
+    getMonthlyAttendance
   } = usePayroll();
-
-  const [selectedMonth, setSelectedMonth] = useState('2026-05');
+  const currentYearMonth = new Date().toISOString().slice(0, 7);
+  const [selectedMonth, setSelectedMonth] = useState(currentYearMonth);
   const [selectedBranch, setSelectedBranch] = useState('ALL');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('ALL');
@@ -38,6 +38,7 @@ export default function PayrollProcessing() {
   const [needsRecalculation, setNeedsRecalculation] = useState(false);
   const [payslipEmployeeId, setPayslipEmployeeId] = useState<string | null>(null);
   const [previewRecords, setPreviewRecords] = useState<PayrollRecord[] | null>(null);
+  const [finalizeConfirmEmployeeId, setFinalizeConfirmEmployeeId] = useState<string | null>(null);
 
   useEffect(() => {
     const key = `needsRecalculation_${selectedMonth}`;
@@ -89,49 +90,7 @@ export default function PayrollProcessing() {
   const activeAdvance = activeEmployeeId ? advances.find(a => a.employeeId === activeEmployeeId && a.month === selectedMonth) : undefined;
 
   const getAttendanceRecord = (employeeId: string) => {
-    const existing = attendance.find(a => a.employeeId === employeeId && a.month === selectedMonth);
-    if (existing) return existing;
-
-    const empDaily = dailyAttendance.filter(d => d.employeeId === employeeId && d.date.startsWith(selectedMonth));
-    if (empDaily.length > 0) {
-      let attendanceDays = 0, normalDays = 0, restDays = 0, publicHolidays = 0;
-      let otHours = 0, restDayHours = 0, publicHolidayHours = 0;
-      let unpaidDays = 0, mcDays = 0, annualLeaveDays = 0, hospitalisationDays = 0, maternityDays = 0;
-
-      empDaily.forEach(record => {
-        const duration = record.duration || 1;
-        if (record.leaveType !== 'None') {
-          if (record.leaveType !== 'Rest') {
-            if (!record.leavePaid) unpaidDays += duration;
-            else {
-              attendanceDays += duration;
-              if (record.leaveType === 'MC') mcDays += duration;
-              if (record.leaveType === 'Annual') annualLeaveDays += duration;
-              if (record.leaveType === 'Hospitalization') hospitalisationDays += duration;
-              if (record.leaveType === 'Maternity') maternityDays += duration;
-            }
-          }
-        } else {
-          attendanceDays += duration;
-          if (record.dayType === 'Normal Day') normalDays += duration;
-          if (record.dayType === 'Rest Day') restDays += duration;
-          if (record.dayType === 'Public Holiday') publicHolidays += duration;
-        }
-        if (record.dayType === 'Normal Day') otHours += record.otHours;
-        else if (record.dayType === 'Rest Day') restDayHours += record.otHours;
-        else if (record.dayType === 'Public Holiday') publicHolidayHours += record.otHours;
-      });
-
-      return {
-        employeeId, month: selectedMonth, attendanceDays, normalDays, restDays, publicHolidays, otHours, restDayHours, publicHolidayHours,
-        otReplacement: 0, unpaidDays, mcDays, annualLeaveDays, hospitalisationDays, maternityDays
-      };
-    }
-
-    return {
-      employeeId, month: selectedMonth, attendanceDays: 0, normalDays: 0, restDays: 0, publicHolidays: 0, otHours: 0, restDayHours: 0, publicHolidayHours: 0,
-      otReplacement: 0, unpaidDays: 0, mcDays: 0, annualLeaveDays: 0, hospitalisationDays: 0, maternityDays: 0
-    };
+    return getMonthlyAttendance(employeeId, selectedMonth);
   };
 
   const getPayrollRecord = (employeeId: string) => {
@@ -300,8 +259,7 @@ export default function PayrollProcessing() {
           onViewPayroll={(id) => setPayslipEmployeeId(id)}
           onFinalize={() => {
             if (activeEmployee) {
-              finalizePayroll(activeEmployee.id, selectedMonth);
-              toast.success('Payroll finalized');
+              setFinalizeConfirmEmployeeId(activeEmployee.id);
             }
           }}
           onRevertToDraft={() => {
@@ -359,6 +317,21 @@ export default function PayrollProcessing() {
           month={selectedMonth}
           onConfirm={confirmGeneratePayroll}
           onCancel={() => setPreviewRecords(null)}
+        />
+      )}
+
+      {finalizeConfirmEmployeeId && (
+        <ConfirmDialog
+          isOpen={!!finalizeConfirmEmployeeId}
+          title="Finalize Payroll"
+          message="Are you sure you want to finalize this payroll? It can be reverted to draft later if needed, but it will lock the current calculations."
+          onConfirm={() => {
+            finalizePayroll(finalizeConfirmEmployeeId, selectedMonth);
+            toast.success('Payroll finalized');
+            setFinalizeConfirmEmployeeId(null);
+          }}
+          onCancel={() => setFinalizeConfirmEmployeeId(null)}
+          confirmText="Finalize"
         />
       )}
     </div>

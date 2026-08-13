@@ -3,7 +3,7 @@ import { usePayroll } from '../context/PayrollContext';
 import MonthPicker, { formatMonthDisplay } from '../components/MonthPicker';
 import { BarChart2, AlertTriangle, FileText, Download } from 'lucide-react';
 import { jsPDF } from 'jspdf';
-import 'jspdf-autotable';
+import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 
 export default function Reporting() {
@@ -89,7 +89,7 @@ export default function Reporting() {
         d.totalNet.toFixed(2)
       ]);
       
-      (doc as any).autoTable({
+      autoTable(doc, {
         startY: y + 5,
         head: [['Branch', 'Headcount', 'Gross (RM)', 'OT (RM)', 'Employer EPF', 'Net Pay (RM)']],
         body: tableData,
@@ -104,7 +104,7 @@ export default function Reporting() {
         d.anomalies.join(', ')
       ]);
       
-      (doc as any).autoTable({
+      autoTable(doc, {
         startY: y + 5,
         head: [['Employee Name', 'Branch', 'Gross (RM)', 'Anomalies']],
         body: tableData,
@@ -121,7 +121,7 @@ export default function Reporting() {
         d.netSalary.toFixed(2)
       ]);
       
-      (doc as any).autoTable({
+      autoTable(doc, {
         startY: y + 5,
         head: [['Employee', 'Basic', 'OT', 'Gross', 'Deductions', 'Net']],
         body: tableData,

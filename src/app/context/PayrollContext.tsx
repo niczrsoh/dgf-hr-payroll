@@ -74,6 +74,7 @@ export interface DailyAttendance {
   date: string; // YYYY-MM-DD
   dayType: 'Normal Day' | 'Rest Day' | 'Public Holiday';
   otHours: number;
+  leaveType: 'None' | 'Rest' | 'Annual' | 'Maternity' | 'MC' | 'Hospitalization' | 'Unpaid Leave';
   leavePaid: boolean;
   overrideLog?: string;
   duration?: number;
@@ -133,9 +134,18 @@ export interface PayrollRecord {
   anomalies?: string[];
   projectName?: string;
   payStructure?: '8+3' | '8+4';
+  normalOtHourlyRate?: number;
   normalOtMultiplier?: number;
+  restDayHourlyRate?: number;
   restDayMultiplier?: number;
+  restDayHoursPerDay?: number;
+  restDayOtHourlyRate?: number;
+  restDayOtMultiplier?: number;
+  publicHolidayHourlyRate?: number;
   publicHolidayMultiplier?: number;
+  publicHolidayHoursPerDay?: number;
+  publicHolidayOtHourlyRate?: number;
+  publicHolidayOtMultiplier?: number;
   daysInMonth?: number;
   statutoryBasis?: number;
 }
@@ -165,6 +175,7 @@ export interface PayrollSettings {
   advanceCalculationStartDate: number;
   advanceCalculationEndDate: number;
   advancePaymentDate: number;
+  defaultUniformDeduction: number;
   epfPartAEmployee: number;
   epfPartAEmployer: number;
   epfPartCEmployee: number;
@@ -182,7 +193,6 @@ export interface PayrollSettings {
   socsoTableData: string;
   eisTableData: string;
   skbbkTableData: string;
-  defaultUniformReimbursement: number;
   annualLeaveProRata: boolean;
   statutoryTableUploaded: boolean;
 }
@@ -209,6 +219,7 @@ interface PayrollContextType {
   deleteProject: (id: string) => void;
   saveAttendance: (attendance: Attendance) => void;
   saveDailyAttendance: (records: DailyAttendance[]) => void;
+  getMonthlyAttendance: (employeeId: string, month: string) => Attendance;
   createAttendanceCycle: (cycle: Omit<AttendanceCycle, 'id' | 'createdDate'>) => void;
   getAttendanceCycle: (month: string, branch?: string) => AttendanceCycle | undefined;
   completeAttendanceCycle: (month: string, branch: string) => void;
@@ -720,9 +731,10 @@ const initialSettings: PayrollSettings = {
   restDayRate: 15,
   publicHolidayRate: 22.5,
   salaryDate: 7,
-  advanceCalculationStartDate: 1,
+  advanceCalculationStartDate: 11,
   advanceCalculationEndDate: 10,
   advancePaymentDate: 20,
+  defaultUniformDeduction: 100,
   epfPartAEmployee: 11,
   epfPartAEmployer: 13,
   epfPartCEmployee: 5.5,
@@ -780,9 +792,13 @@ export const PayrollProvider: React.FC<{ children: React.ReactNode }> = ({ child
         const localBranches = localStorage.getItem('payroll_branches');
         const localProjects = localStorage.getItem('payroll_projects');
         const localPayrolls = localStorage.getItem('payroll_records');
+        const localDailyAttendance = localStorage.getItem('payroll_daily_attendance');
 
         if (localProjects) {
           setProjects(JSON.parse(localProjects));
+        }
+        if (localDailyAttendance) {
+          setDailyAttendance(JSON.parse(localDailyAttendance));
         }
 
         // Load all data from database
@@ -969,6 +985,13 @@ export const PayrollProvider: React.FC<{ children: React.ReactNode }> = ({ child
             }
           }
 
+          // USER REQUESTED: OVERRIDE DB AND FORCE DEFAULTS ON REFRESH
+          console.log('%c⚠️ FORCING DEFAULTS: User requested to ignore DB for Attendance, Advances, and Payrolls', 'color: #ef4444; font-weight: bold;');
+          setAttendance(initialAttendance);
+          setAdvances(initialAdvances);
+          setPayrolls(initialPayrolls);
+          setAttendanceCycles(initialAttendanceCycles);
+
           if (dbSettings) setSettings(dbSettings);
 
           console.log('%c✅ Data loaded from database', 'color: #10b981; font-weight: bold; font-size: 12px;');
@@ -1029,6 +1052,13 @@ export const PayrollProvider: React.FC<{ children: React.ReactNode }> = ({ child
       console.log('%c💾 Payrolls synced to localStorage:', 'color: #3b82f6;', payrolls.length);
     }
   }, [payrolls, isLoading]);
+
+  useEffect(() => {
+    if (!isLoading) {
+      localStorage.setItem('payroll_daily_attendance', JSON.stringify(dailyAttendance));
+      console.log('%c💾 Daily attendance synced to localStorage:', 'color: #3b82f6;', dailyAttendance.length);
+    }
+  }, [dailyAttendance, isLoading]);
 
   const addEmployee = (employee: Employee) => {
     // Auto-set createdDate to today if not provided
@@ -1199,6 +1229,104 @@ export const PayrollProvider: React.FC<{ children: React.ReactNode }> = ({ child
     db.deleteProject(id).catch(err => console.error('Failed to delete project from DB:', err));
   };
 
+  const buildMonthlyAttendance = (
+    employeeId: string,
+    month: string,
+    sourceDailyAttendance: DailyAttendance[] = dailyAttendance,
+    sourceAttendance: Attendance[] = attendance
+  ): Attendance => {
+    const legacy = sourceAttendance.find(a => a.employeeId === employeeId && a.month === month);
+    const employeeDaily = sourceDailyAttendance.filter(d => d.employeeId === employeeId && d.date.startsWith(month));
+    const emptyAttendance: Attendance = {
+      employeeId,
+      month,
+      attendanceDays: 0,
+      normalDays: 0,
+      restDays: 0,
+      publicHolidays: 0,
+      otHours: 0,
+      restDayHours: 0,
+      publicHolidayHours: 0,
+      otReplacement: 0,
+      unpaidDays: 0,
+      mcDays: 0,
+      annualLeaveDays: 0,
+      hospitalisationDays: 0,
+      maternityDays: 0,
+    };
+
+    if (employeeDaily.length === 0) {
+      return emptyAttendance;
+    }
+
+    const monthly: Attendance = {
+      employeeId,
+      month,
+      attendanceDays: 0,
+      normalDays: 0,
+      restDays: 0,
+      publicHolidays: 0,
+      otHours: 0,
+      restDayHours: 0,
+      publicHolidayHours: 0,
+      otReplacement: legacy?.otReplacement || 0,
+      unpaidDays: 0,
+      mcDays: 0,
+      annualLeaveDays: 0,
+      hospitalisationDays: 0,
+      maternityDays: 0,
+    };
+
+    employeeDaily.forEach(record => {
+      const duration = record.duration || 1;
+
+      if (record.leaveType !== 'None' && record.leaveType !== 'Rest') {
+        if (!record.leavePaid) {
+          monthly.unpaidDays += duration;
+        } else {
+          monthly.attendanceDays += duration;
+          if (record.leaveType === 'Annual') monthly.annualLeaveDays = (monthly.annualLeaveDays || 0) + duration;
+          if (record.leaveType === 'MC') monthly.mcDays = (monthly.mcDays || 0) + duration;
+          if (record.leaveType === 'Hospitalization') monthly.hospitalisationDays = (monthly.hospitalisationDays || 0) + duration;
+          if (record.leaveType === 'Maternity') monthly.maternityDays = (monthly.maternityDays || 0) + duration;
+        }
+      } else {
+        monthly.attendanceDays += duration;
+        if (record.dayType === 'Normal Day') monthly.normalDays = (monthly.normalDays || 0) + duration;
+        if (record.dayType === 'Rest Day') monthly.restDays = (monthly.restDays || 0) + duration;
+        if (record.dayType === 'Public Holiday') monthly.publicHolidays = (monthly.publicHolidays || 0) + duration;
+      }
+
+      if (record.dayType === 'Normal Day') monthly.otHours += record.otHours;
+      else if (record.dayType === 'Rest Day') monthly.restDayHours += record.otHours;
+      else if (record.dayType === 'Public Holiday') monthly.publicHolidayHours += record.otHours;
+    });
+
+    return monthly;
+  };
+
+  const getMonthlyAttendance = (employeeId: string, month: string): Attendance => {
+    return getCalculatedAttendance(employeeId, month);
+  };
+
+  const upsertAttendanceRecords = (records: Attendance[]) => {
+    if (records.length === 0) return;
+
+    setAttendance(prevAttendance => {
+      const updated = [...prevAttendance];
+      records.forEach(record => {
+        const existing = updated.findIndex(att => att.employeeId === record.employeeId && att.month === record.month);
+        if (existing >= 0) updated[existing] = record;
+        else updated.push(record);
+      });
+      return updated;
+    });
+
+    db.batchSaveAttendance(records).catch(err => {
+      console.error('Failed to sync attendance records to database:', err);
+    });
+  };
+
   const saveAttendance = (newAttendance: Attendance) => {
     setAttendance(prevAttendance => {
       const existing = prevAttendance.findIndex(
@@ -1221,17 +1349,93 @@ export const PayrollProvider: React.FC<{ children: React.ReactNode }> = ({ child
   };
 
   const saveDailyAttendance = (records: DailyAttendance[]) => {
-    setDailyAttendance(prev => {
-      const newRecords = [...prev];
-      records.forEach(record => {
-        const index = newRecords.findIndex(r => r.id === record.id);
-        if (index >= 0) {
-          newRecords[index] = record;
-        } else {
-          newRecords.push(record);
+    const mergedDailyAttendance = [...dailyAttendance];
+    records.forEach(record => {
+      const index = mergedDailyAttendance.findIndex(r => r.id === record.id);
+      if (index >= 0) {
+        mergedDailyAttendance[index] = record;
+      } else {
+        mergedDailyAttendance.push(record);
+      }
+    });
+
+    setDailyAttendance(mergedDailyAttendance);
+    localStorage.setItem('payroll_daily_attendance', JSON.stringify(mergedDailyAttendance));
+
+    const affectedKeys = new Set(records.map(record => `${record.employeeId}|${record.date.slice(0, 7)}`));
+    const syncedMonthlyAttendance = Array.from(affectedKeys).map(key => {
+      const [employeeId, month] = key.split('|');
+      return buildMonthlyAttendance(employeeId, month, mergedDailyAttendance, attendance);
+    });
+    upsertAttendanceRecords(syncedMonthlyAttendance);
+
+    // Auto-create attendance cycle if it doesn't exist for the affected months
+    const affectedMonths = Array.from(new Set(records.map(r => r.date.slice(0, 7))));
+    
+    affectedMonths.forEach(targetMonth => {
+      const existingCycle = attendanceCycles.find(c => c.month === targetMonth && c.branch === 'ALL');
+      if (!existingCycle) {
+        const newCycle: AttendanceCycle = {
+          id: crypto.randomUUID(),
+          month: targetMonth,
+          branch: 'ALL',
+          status: 'Draft',
+          createdDate: new Date().toISOString().split('T')[0],
+          generatedFor: 'All Active Employees',
+          copiedFromPreviousMonth: false,
+        };
+
+        // Get target active employees to build default attendance records for them
+        const targetEmployees = employees
+          .filter(e => e.status === 'Active' && !e.archivedDate)
+          .filter(e => {
+            // If employee has no createdDate, include them (legacy employees)
+            if (!e.createdDate) return true;
+            // Only include if employee was created on or before this month
+            return e.createdDate <= targetMonth + '-01';
+          });
+
+        // Determine which employees already have monthly attendance in this batch or in state
+        const newAttendanceRecords: Attendance[] = [];
+        targetEmployees.forEach(emp => {
+          // Check if this employee's attendance is already in the batch being saved
+          const isSavedInBatch = syncedMonthlyAttendance.some(att => att.employeeId === emp.id && att.month === targetMonth);
+          if (isSavedInBatch) return;
+
+          // Check if it already exists in the global attendance state
+          const existsInGlobal = attendance.some(att => att.employeeId === emp.id && att.month === targetMonth);
+          if (existsInGlobal) return;
+
+          // Otherwise create a default zeroed record
+          newAttendanceRecords.push({
+            employeeId: emp.id,
+            month: targetMonth,
+            attendanceDays: 0,
+            otHours: 0,
+            restDayHours: 0,
+            publicHolidayHours: 0,
+            otReplacement: 0,
+            unpaidDays: 0,
+            mcDays: 0,
+            annualLeaveDays: 0,
+            hospitalisationDays: 0,
+            maternityDays: 0,
+          });
+        });
+
+        // Update cycles state
+        setAttendanceCycles(prev => [...prev, newCycle]);
+        db.createAttendanceCycle(newCycle).catch(err => {
+          console.error('Failed to auto-create attendance cycle in database:', err);
+        });
+
+        if (newAttendanceRecords.length > 0) {
+          setAttendance(prev => [...prev, ...newAttendanceRecords]);
+          db.batchSaveAttendance(newAttendanceRecords).catch(err => {
+            console.error('Failed to auto-save default attendance records in database:', err);
+          });
         }
-      });
-      return newRecords;
+      }
     });
   };
 
@@ -1343,77 +1547,8 @@ export const PayrollProvider: React.FC<{ children: React.ReactNode }> = ({ child
     let attendanceToSave: Attendance[] = [];
 
     setAdvances(prevAdvances => {
-      // Generate monthly attendance from daily records
-      let monthAttendance: Attendance[] = employees.map(emp => {
-        const empDaily = dailyAttendance.filter(d => d.employeeId === emp.id && d.date.startsWith(month));
-        const legacy = attendance.find(a => a.employeeId === emp.id && a.month === month);
-        
-        if (empDaily.length > 0) {
-          let attendanceDays = 0, normalDays = 0, restDays = 0, publicHolidays = 0;
-          let otHours = 0, restDayHours = 0, publicHolidayHours = 0;
-          let unpaidDays = 0, mcDays = 0, annualLeaveDays = 0, hospitalisationDays = 0, maternityDays = 0;
-          
-          empDaily.forEach(record => {
-            const duration = record.duration || 1;
-            if (record.leaveType !== 'None') {
-              if (record.leaveType !== 'Rest') {
-                if (!record.leavePaid) unpaidDays += duration;
-                else {
-                  attendanceDays += duration;
-                  if (record.leaveType === 'MC') mcDays += duration;
-                  if (record.leaveType === 'Annual') annualLeaveDays += duration;
-                  if (record.leaveType === 'Hospitalization') hospitalisationDays += duration;
-                  if (record.leaveType === 'Maternity') maternityDays += duration;
-                }
-              }
-            } else {
-              attendanceDays += duration;
-              if (record.dayType === 'Normal Day') normalDays += duration;
-              if (record.dayType === 'Rest Day') restDays += duration;
-              if (record.dayType === 'Public Holiday') publicHolidays += duration;
-            }
-            if (record.dayType === 'Normal Day') otHours += record.otHours;
-            else if (record.dayType === 'Rest Day') restDayHours += record.otHours;
-            else if (record.dayType === 'Public Holiday') publicHolidayHours += record.otHours;
-          });
-
-          return {
-            employeeId: emp.id,
-            month,
-            attendanceDays,
-            normalDays,
-            restDays,
-            publicHolidays,
-            otHours,
-            restDayHours,
-            publicHolidayHours,
-            otReplacement: legacy?.otReplacement || 0,
-            unpaidDays,
-            mcDays,
-            annualLeaveDays,
-            hospitalisationDays,
-            maternityDays
-          };
-        }
-        
-        return legacy || {
-          employeeId: emp.id,
-          month,
-          attendanceDays: 0,
-          normalDays: 0,
-          restDays: 0,
-          publicHolidays: 0,
-          otHours: 0,
-          restDayHours: 0,
-          publicHolidayHours: 0,
-          otReplacement: 0,
-          unpaidDays: 0,
-          mcDays: 0,
-          annualLeaveDays: 0,
-          hospitalisationDays: 0,
-          maternityDays: 0
-        };
-      });
+      // Generate monthly attendance from the same daily/monthly source used by Attendance and Advance screens.
+      let monthAttendance: Attendance[] = employees.map(emp => buildMonthlyAttendance(emp.id, month));
 
       // If specific employees are provided, ensure attendance records for them
       if (employeeIds && employeeIds.length > 0) {
@@ -1549,8 +1684,8 @@ export const PayrollProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const createSingleAdvance = (employeeId: string, month: string) => {
     // Get employee attendance for eligibility calculation
-    const att = attendance.find(a => a.employeeId === employeeId && a.month === month);
-    const attendanceDays = att?.attendanceDays || 0;
+    const att = buildMonthlyAttendance(employeeId, month);
+    const attendanceDays = att.attendanceDays || 0;
 
     // Calculate eligibility
     let eligibility: 'Full' | 'Half' | 'None' = 'None';
@@ -1655,24 +1790,26 @@ const currentYY = currentYear % 100;
     const empDaily = dailyAttendance.filter(d => d.employeeId === emp.id && d.date.startsWith(month));
     const project = emp.projectId ? projects.find(p => p.id === emp.projectId) : null;
     const standardOtHoursPerDay = project?.payStructure === '8+3' ? 3 : 4;
+    
+    const isUsingDailyEngineForMonth = dailyAttendance.some(d => d.date.startsWith(month)) || attendanceCycles.some(c => c.month === month);
 
-    if (empDaily.length > 0) {
+    if (empDaily.length > 0 || isUsingDailyEngineForMonth) {
       let attendanceDays = 0, normalDays = 0, restDays = 0, publicHolidays = 0;
       let otHours = 0, restDayHours = 0, publicHolidayHours = 0;
       let unpaidDays = 0, mcDays = 0, annualLeaveDays = 0, hospitalisationDays = 0, maternityDays = 0;
 
+      if (empDaily.length > 0) {
+
       empDaily.forEach(record => {
         const duration = record.duration || 1;
-        if (record.leaveType !== 'None') {
-          if (record.leaveType !== 'Rest') {
-            if (!record.leavePaid) unpaidDays += duration;
-            else {
-              attendanceDays += duration;
-              if (record.leaveType === 'MC') mcDays += duration;
-              if (record.leaveType === 'Annual') annualLeaveDays += duration;
-              if (record.leaveType === 'Hospitalization') hospitalisationDays += duration;
-              if (record.leaveType === 'Maternity') maternityDays += duration;
-            }
+        if (record.leaveType !== 'None' && record.leaveType !== 'Rest') {
+          if (!record.leavePaid) unpaidDays += duration;
+          else {
+            attendanceDays += duration;
+            if (record.leaveType === 'MC') mcDays += duration;
+            if (record.leaveType === 'Annual') annualLeaveDays += duration;
+            if (record.leaveType === 'Hospitalization') hospitalisationDays += duration;
+            if (record.leaveType === 'Maternity') maternityDays += duration;
           }
         } else {
           attendanceDays += duration;
@@ -1684,6 +1821,7 @@ const currentYY = currentYear % 100;
         else if (record.dayType === 'Rest Day') restDayHours += record.otHours / standardOtHoursPerDay;
         else if (record.dayType === 'Public Holiday') publicHolidayHours += record.otHours / standardOtHoursPerDay;
       });
+      }
 
       return { 
         employeeId: emp.id, 
@@ -1739,8 +1877,8 @@ const currentYY = currentYear % 100;
   };
 
   const generatePayroll = (month: string, branchCode?: string, dryRun: boolean = false): PayrollRecord[] | void => {
-    // ── Step 1: Build attendance from daily records or legacy monthly ─────────
-    const monthAttendance: Attendance[] = employees.map(emp => getCalculatedAttendance(emp.id, month));
+    // ── Step 1: Build attendance from the same daily source used by Attendance/Advance tabs ──
+    const monthAttendance: Attendance[] = employees.map(emp => buildMonthlyAttendance(emp.id, month));
 
     const filteredAttendance = branchCode
       ? monthAttendance.filter(a => employees.find(e => e.id === a.employeeId)?.branchCode === branchCode)
@@ -1756,10 +1894,14 @@ const currentYY = currentYear % 100;
     try { eightPlusFourTable = settings.eightPlusFourData ? JSON.parse(settings.eightPlusFourData) : []; } catch {}
     try { eightPlusThreeTable = settings.eightPlusThreeData ? JSON.parse(settings.eightPlusThreeData) : []; } catch {}
 
-    // Helper: get multiplier for a day type from the appropriate table
-    const getTableMultiplier = (table: any[], dayType: string): number => {
+    const getTableRow = (table: WorkDayRate[], dayType: string, fallback: Partial<WorkDayRate> = {}): WorkDayRate => {
       const row = table.find(r => r.dayType === dayType);
-      return row?.multiplier ?? 1.0;
+      return {
+        dayType,
+        hourlyRate: Number(row?.hourlyRate ?? fallback.hourlyRate ?? 0),
+        multiplier: Number(row?.multiplier ?? fallback.multiplier ?? 1),
+        hours: Number(row?.hours ?? fallback.hours ?? 0),
+      };
     };
 
     let payrollsToSave: PayrollRecord[] = [];
@@ -1772,7 +1914,11 @@ const currentYY = currentYear % 100;
         if (employee.createdDate && employee.createdDate.substring(0, 7) > month) return null;
 
         const existingPayroll = payrolls.find(p => p.employeeId === att.employeeId && p.month === month);
-        const advance = advances.find(a => a.employeeId === att.employeeId && a.month === month);
+        const advance = advances.find(a =>
+          a.employeeId === att.employeeId &&
+          a.month === month &&
+          ['Approved', 'Paid', 'Bank File Generated'].includes(a.status)
+        );
         const payrollYear = parseInt(yearStr, 10);
         const age = getAgeFromIC(employee.icNumber, payrollYear);
 
@@ -1784,31 +1930,34 @@ const currentYY = currentYear % 100;
         // ── Basic salary & rates ──────────────────────────────────────────────
         const basicSalary = employee.basicSalary;
         const dailyRate = basicSalary / daysInMonth;
-        const hourlyRate = dailyRate / 8; // 8 base work hours per day
+        const employeeHourlyFallback = (basicSalary / 26) / 8;
+        const normalOtRow = getTableRow(table, 'Normal Day OT', { hourlyRate: employeeHourlyFallback, multiplier: 1.5, hours: payStructure === '8+3' ? 3 : 4 });
+        const restDayRow = getTableRow(table, 'Rest Day', { hourlyRate: employeeHourlyFallback, multiplier: 1, hours: 8 });
+        const restDayOtRow = getTableRow(table, 'Rest Day OT', { hourlyRate: employeeHourlyFallback, multiplier: 2, hours: payStructure === '8+3' ? 3 : 4 });
+        const phRow = getTableRow(table, 'Public Holiday', { hourlyRate: employeeHourlyFallback, multiplier: 2, hours: 8 });
+        const phOtRow = getTableRow(table, 'Public Holiday OT', { hourlyRate: employeeHourlyFallback, multiplier: 3, hours: payStructure === '8+3' ? 3 : 4 });
 
         // ── Step 3: Unpaid days deduction ─────────────────────────────────────
         // Per flowchart: unpaid = basic / daysInMonth × unpaidDays
         const unpaidDeduction = dailyRate * att.unpaidDays;
 
         // ── Step 4: Calculate all wage components ─────────────────────────────
-        const standardOtHoursPerDay = payStructure === '8+3' ? 3 : 4;
-        
-        // Normal Day OT: hours × hourlyRate × multiplier (1.5× by default, or overridden by project)
-        const normalOtMult = project?.customOtMultiplier ?? (getTableMultiplier(table, 'Normal Day OT') || 1.5);
-        const otPay = att.otHours * standardOtHoursPerDay * hourlyRate * normalOtMult;
+        // Normal Day OT: attendance hours × saved hourly rate × saved/custom multiplier.
+        const normalOtMult = project?.customOtMultiplier ?? normalOtRow.multiplier;
+        const otPay = att.otHours * normalOtRow.hourlyRate * normalOtMult;
 
         // Rest Day
-        const restDayMult = getTableMultiplier(table, 'Rest Day') || 1.0;
-        const restDayOtMult = getTableMultiplier(table, 'Rest Day OT') || 2.0;
-        const restDayBasePay = (att.restDays || 0) * 8 * hourlyRate * restDayMult;
-        const restDayOtPay = att.restDayHours * standardOtHoursPerDay * hourlyRate * restDayOtMult;
+        const restDayMult = restDayRow.multiplier;
+        const restDayOtMult = restDayOtRow.multiplier;
+        const restDayBasePay = (att.restDays || 0) * restDayRow.hours * restDayRow.hourlyRate * restDayMult;
+        const restDayOtPay = att.restDayHours * restDayOtRow.hourlyRate * restDayOtMult;
         const restDayPay = restDayBasePay + restDayOtPay;
 
         // Public Holiday
-        const phMult = getTableMultiplier(table, 'Public Holiday') || 2.0;
-        const phOtMult = getTableMultiplier(table, 'Public Holiday OT') || 3.0;
-        const phBasePay = (att.publicHolidays || 0) * 8 * hourlyRate * phMult;
-        const phOtPay = att.publicHolidayHours * standardOtHoursPerDay * hourlyRate * phOtMult;
+        const phMult = phRow.multiplier;
+        const phOtMult = phOtRow.multiplier;
+        const phBasePay = (att.publicHolidays || 0) * phRow.hours * phRow.hourlyRate * phMult;
+        const phOtPay = att.publicHolidayHours * phOtRow.hourlyRate * phOtMult;
         const publicHolidayPay = phBasePay + phOtPay;
 
         // OT Replacement (day-off in lieu): 1 day's pay = basic/26 per the flowchart note
@@ -1817,14 +1966,15 @@ const currentYY = currentYear % 100;
         // Reimbursements & adjustments (preserved from previous generate)
         let reimbursements = existingPayroll?.reimbursements || [];
         
-        // Auto-add Uniform reimbursement if it's their first month and first time generating
+        let uniformDeduction = existingPayroll?.uniformDeduction || 0;
+
+        // Auto-add Uniform deduction if it's their first month and first time generating
         if (employee.createdDate && employee.createdDate.startsWith(month) && !existingPayroll) {
-          reimbursements = [...reimbursements, { type: 'Uniform', amount: settings.defaultUniformReimbursement || 100 }];
+          uniformDeduction = settings.defaultUniformDeduction || 100;
         }
         
         const sumReimbursements = reimbursements.reduce((sum, r) => sum + r.amount, 0);
         const manualAdjustment = existingPayroll?.manualAdjustment || 0;
-        const uniformDeduction = existingPayroll?.uniformDeduction || 0;
 
         // ── Step 5: Gross Pay ─────────────────────────────────────────────────
         const grossEarnings = basicSalary + otPay + restDayPay + publicHolidayPay + otReplacementPay + sumReimbursements + manualAdjustment;
@@ -1870,7 +2020,9 @@ const currentYY = currentYear % 100;
         prevMonthDate.setMonth(prevMonthDate.getMonth() - 1);
         const prevMonthStr = prevMonthDate.toISOString().slice(0, 7);
         const prevPayroll = payrolls.find(p => p.employeeId === employee.id && p.month === prevMonthStr);
-        if (prevPayroll && prevPayroll.grossEarnings > 0) {
+        const prevAttendance = getCalculatedAttendance(employee.id, prevMonthStr);
+        
+        if (prevPayroll && prevPayroll.grossEarnings > 0 && prevAttendance.attendanceDays > 0) {
           const variance = Math.abs((grossEarnings - prevPayroll.grossEarnings) / prevPayroll.grossEarnings);
           if (variance > 0.20) anomalies.push(`Large Variance vs Last Month (${(variance * 100).toFixed(0)}%)`);
         }
@@ -1895,7 +2047,14 @@ const currentYY = currentYear % 100;
           epfEmployer,
           socsoEmployer,
           sipEmployer,
-          status: existingPayroll?.status || ('Draft' as const),
+          status: (() => {
+            if (!existingPayroll) return 'Draft' as const;
+            if (existingPayroll.status === 'Finalized') {
+              const isChanged = Math.abs(existingPayroll.grossEarnings - grossEarnings) > 0.01 || Math.abs(existingPayroll.totalDeduction - totalDeduction) > 0.01;
+              if (isChanged) return 'Draft' as const;
+            }
+            return existingPayroll.status;
+          })(),
           paymentMethod: existingPayroll?.paymentMethod,
           paymentDate: existingPayroll?.paymentDate,
           paymentReference: existingPayroll?.paymentReference,
@@ -1905,9 +2064,18 @@ const currentYY = currentYear % 100;
           anomalies,
           projectName: project?.name || 'Unassigned',
           payStructure,
+          normalOtHourlyRate: normalOtRow.hourlyRate,
           normalOtMultiplier: normalOtMult,
+          restDayHourlyRate: restDayRow.hourlyRate,
           restDayMultiplier: restDayMult,
+          restDayHoursPerDay: restDayRow.hours,
+          restDayOtHourlyRate: restDayOtRow.hourlyRate,
+          restDayOtMultiplier: restDayOtMult,
+          publicHolidayHourlyRate: phRow.hourlyRate,
           publicHolidayMultiplier: phMult,
+          publicHolidayHoursPerDay: phRow.hours,
+          publicHolidayOtHourlyRate: phOtRow.hourlyRate,
+          publicHolidayOtMultiplier: phOtMult,
           daysInMonth,
           statutoryBasis,
         };
@@ -2050,26 +2218,37 @@ const currentYY = currentYear % 100;
   };
 
   const updatePayrollAdjustments = (employeeId: string, month: string, reimbursements: {type: string, amount: number}[], uniformDeduction: number) => {
-    const updatedPayrolls: PayrollRecord[] = [];
-    setPayrolls(prevPayrolls => prevPayrolls.map(p => {
+    let updatedRecord: PayrollRecord | null = null;
+    
+    const newPayrolls = payrolls.map(p => {
       if (p.employeeId === employeeId && p.month === month) {
+        const sumReimbursements = reimbursements.reduce((sum, r) => sum + r.amount, 0);
+        const oldSumReimbursements = (p.reimbursements || []).reduce((sum, r) => sum + r.amount, 0);
+        
+        const newGrossEarnings = p.grossEarnings - oldSumReimbursements + sumReimbursements;
+        const newTotalDeduction = p.totalDeduction - (p.uniformDeduction || 0) + uniformDeduction;
+        const newNetSalary = newGrossEarnings - newTotalDeduction;
+
         const updated = {
           ...p,
           reimbursements,
-          uniformDeduction
+          uniformDeduction,
+          grossEarnings: newGrossEarnings,
+          grossSalary: newGrossEarnings, // keep in sync
+          totalDeduction: newTotalDeduction,
+          netSalary: newNetSalary
         };
-        updatedPayrolls.push(updated);
+        updatedRecord = updated;
         return updated;
       }
       return p;
-    }));
+    });
 
-    if (updatedPayrolls.length > 0) {
-      db.batchSavePayrolls(updatedPayrolls).catch(err => {
+    if (updatedRecord) {
+      setPayrolls(newPayrolls);
+      db.batchSavePayrolls([updatedRecord]).catch(err => {
         console.error('Failed to save adjustments to database:', err);
       });
-      // Trigger a recalculation to update net pay with new adjustments
-      setTimeout(() => generatePayroll(month), 100);
     }
   };
 
@@ -2171,6 +2350,7 @@ const currentYY = currentYear % 100;
         deleteProject,
         saveAttendance,
         saveDailyAttendance,
+        getMonthlyAttendance,
         createAttendanceCycle,
         getAttendanceCycle,
         completeAttendanceCycle,

@@ -9,7 +9,7 @@ interface PayrollPreviewProps {
 }
 
 export default function PayrollPreview({ employee, payroll }: PayrollPreviewProps) {
-  const { dailyAttendance, attendance } = usePayroll();
+  const { dailyAttendance, getCalculatedAttendance } = usePayroll();
   const monthYear = new Date(payroll.month + '-01').toLocaleDateString('en-MY', {
     month: 'long',
     year: 'numeric',
@@ -38,7 +38,7 @@ export default function PayrollPreview({ employee, payroll }: PayrollPreviewProp
   };
 
   return (
-    <div className="p-8 sm:p-12 relative flex flex-col md:flex-row gap-8">
+    <div className="p-6 sm:p-8 relative grid grid-cols-1 xl:grid-cols-[280px_minmax(0,1fr)] gap-6 max-w-6xl mx-auto print:block">
       {/* Status Watermark */}
       <div className={`absolute inset-0 flex items-center justify-center pointer-events-none opacity-10 ${
         payroll.status === 'Paid' ? 'text-green-600' :
@@ -51,7 +51,7 @@ export default function PayrollPreview({ employee, payroll }: PayrollPreviewProp
       </div>
 
       {/* LEFT COLUMN: Leave Balances */}
-      <div className="md:w-1/4 flex flex-col gap-6 relative z-10">
+      <div className="flex flex-col gap-6 relative z-10 print:hidden">
         <div className="bg-slate-50 border border-slate-200 rounded-lg p-5">
           <h3 className="font-bold text-slate-800 mb-4 pb-2 border-b border-slate-200">Leave Balances</h3>
           <div className="space-y-4">
@@ -99,10 +99,44 @@ export default function PayrollPreview({ employee, payroll }: PayrollPreviewProp
             </div>
           </div>
         </div>
+
+        {/* Attendance Summary */}
+        <div className="bg-slate-50 border border-slate-200 rounded-lg p-5 mt-6">
+          <h3 className="font-bold text-slate-800 mb-4 pb-2 border-b border-slate-200">Attendance</h3>
+          <div className="space-y-3">
+            {(() => {
+              const activeAtt = getCalculatedAttendance(employee.id, payroll.month);
+              return (
+                <>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-600">Total Attendance</span>
+                    <span className="font-semibold text-slate-900">{activeAtt.attendanceDays} days</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-600">Normal Days</span>
+                    <span className="font-semibold text-slate-900">{activeAtt.normalDays} days</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-600">Normal Day OT</span>
+                    <span className="font-semibold text-slate-900">{activeAtt.normalOtDays} days</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-600">Rest Days</span>
+                    <span className="font-semibold text-slate-900">{activeAtt.restDays} days</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-600">Public Holidays</span>
+                    <span className="font-semibold text-slate-900">{activeAtt.publicHolidays} days</span>
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+        </div>
       </div>
 
       {/* RIGHT COLUMN: Payslip Content */}
-      <div className="md:w-3/4 relative z-10">
+      <div className="relative z-10 min-w-0">
         {/* Anomalies Banner */}
         {payroll.anomalies && payroll.anomalies.length > 0 && (
           <div className="mb-6 bg-red-50 border-l-4 border-red-500 p-4 rounded-r-lg flex items-start gap-3">
@@ -164,8 +198,8 @@ export default function PayrollPreview({ employee, payroll }: PayrollPreviewProp
         </div>
 
         {/* Payroll Table */}
-        <div className="mb-6 border-2 border-slate-300 rounded-lg overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="mb-6 border-2 border-slate-300 rounded-lg overflow-x-auto">
+          <table className="w-full min-w-[760px] text-sm table-fixed">
             <thead>
               <tr className="bg-slate-100 border-b-2 border-slate-300">
                 <th className="px-4 py-3 text-left font-semibold border-r border-slate-300">EARNINGS</th>
@@ -186,11 +220,17 @@ export default function PayrollPreview({ employee, payroll }: PayrollPreviewProp
                       <span className="font-medium">RM {(payroll.otPay || 0).toFixed(2)}</span>
                     </div>
                     {(() => {
-                      const att = attendance.find(a => a.employeeId === employee.id && a.month === payroll.month);
-                      const hourlyRate = (payroll.basicSalary / (payroll.daysInMonth || 26)) / 8;
-                      const restDayBasePay = (att?.restDays || 0) * 8 * hourlyRate * (payroll.restDayMultiplier || 1.0);
+                      const att = getCalculatedAttendance(employee.id, payroll.month);
+                      const fallbackHourlyRate = (payroll.basicSalary / 26) / 8;
+                      const restDayBasePay = (att.restDays || 0) *
+                        (payroll.restDayHoursPerDay || 8) *
+                        (payroll.restDayHourlyRate || fallbackHourlyRate) *
+                        (payroll.restDayMultiplier || 1.0);
                       const restDayOtPay = Math.max(0, payroll.restDayPay - restDayBasePay);
-                      const phBasePay = (att?.publicHolidays || 0) * 8 * hourlyRate * (payroll.publicHolidayMultiplier || 2.0);
+                      const phBasePay = (att?.publicHolidays || 0) *
+                        (payroll.publicHolidayHoursPerDay || 8) *
+                        (payroll.publicHolidayHourlyRate || fallbackHourlyRate) *
+                        (payroll.publicHolidayMultiplier || 2.0);
                       const phOtPay = Math.max(0, payroll.publicHolidayPay - phBasePay);
 
                       return (

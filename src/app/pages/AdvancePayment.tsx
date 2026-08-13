@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useBlocker } from 'react-router-dom';
 import { usePayroll, Attendance, Employee } from '../context/PayrollContext';
-import { Search, Eye, CheckSquare, Square, Edit, Calculator, CheckCircle, DollarSign, Upload, FileDown, AlertCircle, X, BadgeCheck, Save, Printer } from 'lucide-react';
+import { Search, Eye, CheckSquare, Square, Calculator, CheckCircle, Upload, FileDown, AlertCircle, X, BadgeCheck, Printer } from 'lucide-react';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -10,14 +10,13 @@ import PDFViewer from '../components/PDFViewer';
 import AdvanceSlipPreview from '../components/AdvanceSlipPreview';
 import AdvanceGeneratePreview from '../components/AdvanceGeneratePreview';
 import AdvanceApprovePreview from '../components/AdvanceApprovePreview';
-import AdvancePayPreview from '../components/AdvancePayPreview';
 import BankUploadPreview from '../components/BankUploadPreview';
 import AdvancePaymentHistoryPreview from '../components/AdvancePaymentHistoryPreview';
 
 export default function AdvancePayment() {
-  const { employees, branches, attendance, advances, settings, generateAdvances, generatePayroll, createSingleAdvance, approveAdvance, payAdvance, deleteAdvanceRecords, saveAttendance, getAttendanceCycle, createAttendanceCycle } = usePayroll();
-  // Default to current month (May 2026)
-  const [selectedMonth, setSelectedMonth] = useState('2026-05');
+  const { employees, branches, attendance, advances, settings, generateAdvances, generatePayroll, createSingleAdvance, approveAdvance, deleteAdvanceRecords, getAttendanceCycle, createAttendanceCycle, getMonthlyAttendance } = usePayroll();
+  const currentYearMonth = new Date().toISOString().slice(0, 7);
+  const [selectedMonth, setSelectedMonth] = useState(currentYearMonth);
   const [selectedBranch, setSelectedBranch] = useState('ALL');
   const [selectedStatus, setSelectedStatus] = useState('ALL');
   const [searchTerm, setSearchTerm] = useState('');
@@ -27,20 +26,12 @@ export default function AdvancePayment() {
   const [showGenerateConfirm, setShowGenerateConfirm] = useState(false);
   const [showApprovePreview, setShowApprovePreview] = useState(false);
   const [showApproveConfirm, setShowApproveConfirm] = useState(false);
-  const [showPayPreview, setShowPayPreview] = useState(false);
-  const [showPayConfirm, setShowPayConfirm] = useState(false);
-  const [editingEmployeeId, setEditingEmployeeId] = useState<string | null>(null);
-  const [editingAttendance, setEditingAttendance] = useState<Partial<Attendance> | null>(null);
   const [showBankUploadConfirm, setShowBankUploadConfirm] = useState(false);
   const [showBankUploadPreview, setShowBankUploadPreview] = useState(false);
   const [bankUploadRecords, setBankUploadRecords] = useState<any[]>([]);
-  const [showSaveAttendanceConfirm, setShowSaveAttendanceConfirm] = useState(false);
   const [individualGenerateConfirm, setIndividualGenerateConfirm] = useState<string | null>(null);
   const [individualApproveConfirm, setIndividualApproveConfirm] = useState<string | null>(null);
-  const [individualPayConfirm, setIndividualPayConfirm] = useState<string | null>(null);
   const [showHistoryPreview, setShowHistoryPreview] = useState(false);
-  const [showBulkEditAttendance, setShowBulkEditAttendance] = useState(false);
-  const [bulkEditAttendanceData, setBulkEditAttendanceData] = useState<Map<string, Partial<Attendance>>>(new Map());
   const [historyFilterMonth, setHistoryFilterMonth] = useState('ALL');
   const [historyFilterEmployee, setHistoryFilterEmployee] = useState('ALL');
   const [historyFilterBranch, setHistoryFilterBranch] = useState('ALL');
@@ -124,17 +115,7 @@ export default function AdvancePayment() {
   });
 
   const getAttendance = (employeeId: string): Attendance => {
-    const existing = attendance.find(a => a.employeeId === employeeId && a.month === selectedMonth);
-    return existing || {
-      employeeId,
-      month: selectedMonth,
-      attendanceDays: 0,
-      otHours: 0,
-      restDayHours: 0,
-      publicHolidayHours: 0,
-      otReplacement: 0,
-      unpaidDays: 0,
-    };
+    return getMonthlyAttendance(employeeId, selectedMonth);
   };
 
   const getAdvanceInfo = (employeeId: string) => {
@@ -199,108 +180,6 @@ export default function AdvancePayment() {
     } else {
       setSelectedEmployees(new Set(filteredEmployeesWithStatus.map(e => e.id)));
     }
-  };
-
-  const handleEditAttendance = (employeeId: string) => {
-    const info = getAdvanceInfo(employeeId);
-    if (info.status === 'Paid' || info.status === 'Bank File Generated') {
-      toast.error('Cannot edit attendance - payment already processed');
-      return;
-    }
-    if (info.status === 'Approved') {
-      toast.error('Cannot edit attendance - advance already approved');
-      return;
-    }
-    setEditingEmployeeId(employeeId);
-    setEditingAttendance(getAttendance(employeeId));
-  };
-
-  const handleAttendanceChange = (field: keyof Attendance, value: number) => {
-    if (editingAttendance) {
-      setEditingAttendance({ ...editingAttendance, [field]: value });
-    }
-  };
-
-  const handleSaveAttendance = () => {
-    setShowSaveAttendanceConfirm(true);
-  };
-
-  const confirmSaveAttendance = () => {
-    if (editingEmployeeId && editingAttendance) {
-      const existingAttendance = getAttendance(editingEmployeeId);
-      const attendanceData: Attendance = {
-        ...existingAttendance,
-        ...editingAttendance,
-        employeeId: editingEmployeeId,
-        month: selectedMonth,
-      };
-      saveAttendance(attendanceData);
-      setModifiedEmployees(prev => new Set(prev).add(editingEmployeeId));
-      setEditingEmployeeId(null);
-      setEditingAttendance(null);
-      setShowSaveAttendanceConfirm(false);
-      setNeedsRecalculation(true);
-      toast.success('Attendance saved successfully.');
-    }
-  };
-
-  const handleBulkEditAttendance = () => {
-    if (selectedEmployees.size === 0) {
-      toast.error('Please select employees');
-      return;
-    }
-
-    // Check if any selected employee has payment processed or approved
-    const hasLockedEmployees = Array.from(selectedEmployees).some(empId => {
-      const info = getAdvanceInfo(empId);
-      return info.status === 'Approved' || info.status === 'Paid' || info.status === 'Bank File Generated';
-    });
-
-    if (hasLockedEmployees) {
-      toast.error('Cannot edit attendance - advance already approved or payment processed for some employees');
-      return;
-    }
-
-    const initialData = new Map();
-    selectedEmployees.forEach(empId => {
-      initialData.set(empId, getAttendance(empId));
-    });
-    setBulkEditAttendanceData(initialData);
-    setShowBulkEditAttendance(true);
-  };
-
-  const handleBulkAttendanceFieldChange = (employeeId: string, field: keyof Attendance, value: number) => {
-    const newData = new Map(bulkEditAttendanceData);
-    const current = newData.get(employeeId) || {};
-    newData.set(employeeId, { ...current, [field]: value });
-    setBulkEditAttendanceData(newData);
-  };
-
-  const handleSaveBulkAttendance = () => {
-    const modifiedIds: string[] = [];
-    bulkEditAttendanceData.forEach((data, empId) => {
-      modifiedIds.push(empId);
-      const attendanceData: Attendance = {
-        employeeId: empId,
-        month: selectedMonth,
-        attendanceDays: data.attendanceDays || 0,
-        otHours: data.otHours || 0,
-        restDayHours: data.restDayHours || 0,
-        publicHolidayHours: data.publicHolidayHours || 0,
-        otReplacement: data.otReplacement || 0,
-        unpaidDays: data.unpaidDays || 0,
-      };
-      saveAttendance(attendanceData);
-    });
-    setModifiedEmployees(prev => {
-      const newSet = new Set(prev);
-      modifiedIds.forEach(id => newSet.add(id));
-      return newSet;
-    });
-    setShowBulkEditAttendance(false);
-    setBulkEditAttendanceData(new Map());
-    setNeedsRecalculation(true);
-    toast.success(`Attendance saved for ${bulkEditAttendanceData.size} employees`);
   };
 
   const getFilteredHistoryRecords = () => {
@@ -489,8 +368,7 @@ export default function AdvancePayment() {
 
     // Only check modified employees
     employeesToCheck.forEach(empId => {
-      const att = attendance.find(a => a.employeeId === empId && a.month === selectedMonth);
-      if (!att) return;
+      const att = getMonthlyAttendance(empId, selectedMonth);
 
       const employee = employees.find(e => e.id === empId);
       if (!employee || employee.archivedDate) return;
@@ -541,9 +419,8 @@ export default function AdvancePayment() {
       deleteAdvanceRecords(modifiedEmpArray, selectedMonth);
     }
 
-    // Recalculate both advances and payroll
+    // Recalculate advance records only. Payroll is updated after advances are approved.
     generateAdvances(selectedMonth, true);
-    generatePayroll(selectedMonth, selectedBranch !== 'ALL' ? selectedBranch : undefined);
 
     // Clear recalculation flags and modified employees tracking
     setNeedsRecalculation(false);
@@ -678,39 +555,21 @@ export default function AdvancePayment() {
   };
 
   const confirmApprove = () => {
+    let approvedCount = 0;
     selectedEmployees.forEach(empId => {
       const adv = advances.find(a => a.employeeId === empId && a.month === selectedMonth);
       if (adv && adv.status === 'Generated') {
         approveAdvance(empId, selectedMonth);
+        approvedCount += 1;
       }
     });
-    toast.success('Advance payment approved successfully.');
-    setShowApproveConfirm(false);
-    setSelectedEmployees(new Set());
-  };
-
-  const handlePaySelected = () => {
-    if (selectedEmployees.size === 0) {
-      toast.error('Please select employees.');
-      return;
+    if (approvedCount > 0) {
+      setTimeout(() => {
+        generatePayroll(selectedMonth, selectedBranch === 'ALL' ? undefined : selectedBranch);
+      }, 100);
     }
-    setShowPayPreview(true);
-  };
-
-  const handlePayPreviewContinue = () => {
-    setShowPayPreview(false);
-    setShowPayConfirm(true);
-  };
-
-  const confirmPay = () => {
-    selectedEmployees.forEach(empId => {
-      const adv = advances.find(a => a.employeeId === empId && a.month === selectedMonth);
-      if (adv && adv.status === 'Approved') {
-        payAdvance(empId, selectedMonth);
-      }
-    });
-    toast.success('Advance paid successfully.');
-    setShowPayConfirm(false);
+    toast.success('Advance payment approved and payroll updated successfully.');
+    setShowApproveConfirm(false);
     setSelectedEmployees(new Set());
   };
 
@@ -866,7 +725,7 @@ export default function AdvancePayment() {
         </div>
 
         {/* Action Buttons Row */}
-        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-3 gap-3">
           <button
             onClick={handleGenerateSelected}
             disabled={selectedEmployees.size === 0 || Array.from(selectedEmployees).some(empId => {
@@ -888,28 +747,6 @@ export default function AdvancePayment() {
             title={needsRecalculation ? 'Please recalculate before approving' : ''}
           >
             Approve Advance {selectedEmployees.size > 0 ? `(${selectedEmployees.size})` : ''}
-          </button>
-          <button
-            onClick={handlePaySelected}
-            disabled={selectedEmployees.size === 0 || needsRecalculation}
-            className="px-3 py-2 rounded-lg text-sm font-medium transition-colors bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
-            title={needsRecalculation ? 'Please recalculate before processing payment' : ''}
-          >
-            Pay Advance {selectedEmployees.size > 0 ? `(${selectedEmployees.size})` : ''}
-          </button>
-          <button
-            onClick={handleBulkEditAttendance}
-            disabled={selectedEmployees.size === 0 || Array.from(selectedEmployees).some(empId => {
-              const info = getAdvanceInfo(empId);
-              return info.status === 'Approved' || info.status === 'Paid' || info.status === 'Bank File Generated';
-            })}
-            className="px-3 py-2 rounded-lg text-sm font-medium transition-colors bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
-            title={Array.from(selectedEmployees).some(empId => {
-              const info = getAdvanceInfo(empId);
-              return info.status === 'Approved' || info.status === 'Paid' || info.status === 'Bank File Generated';
-            }) ? 'Cannot edit - Some employees have approved or processed advances' : ''}
-          >
-            Edit Attendance {selectedEmployees.size > 0 ? `(${selectedEmployees.size})` : ''}
           </button>
         </div>
       </div>
@@ -1004,9 +841,6 @@ export default function AdvancePayment() {
                         <span className="inline-flex items-center px-2 py-0.5 rounded bg-slate-100 text-slate-700">
                           PH {att.publicHolidayHours}h
                         </span>
-                        <span className="inline-flex items-center px-2 py-0.5 rounded bg-slate-100 text-slate-700">
-                          OTR {att.otReplacement}
-                        </span>
                         <span className="inline-flex items-center px-2 py-0.5 rounded bg-red-100 text-red-700">
                           Unpaid {att.unpaidDays}
                         </span>
@@ -1042,13 +876,6 @@ export default function AdvancePayment() {
                         {(info.status === 'Paid' || info.status === 'Bank File Generated') ? (
                           <>
                             <button
-                              disabled
-                              className="p-1 text-slate-400 bg-slate-50 rounded cursor-not-allowed opacity-40"
-                              title="Locked - Payment Completed"
-                            >
-                              <Edit className="w-4 h-4" />
-                            </button>
-                            <button
                               onClick={() => handleViewAdvance(employee.id)}
                               className="p-1 text-purple-600 hover:bg-purple-50 rounded"
                               title="View Advance Slip"
@@ -1073,24 +900,6 @@ export default function AdvancePayment() {
                         ) : (
                           <>
                             <button
-                              onClick={() => handleEditAttendance(employee.id)}
-                              disabled={info.status === 'Approved' || info.status === 'Paid' || info.status === 'Bank File Generated'}
-                              className={`p-1 rounded ${
-                                info.status === 'Approved' || info.status === 'Paid' || info.status === 'Bank File Generated'
-                                  ? 'text-slate-400 bg-slate-50 cursor-not-allowed opacity-40'
-                                  : 'text-blue-600 hover:bg-blue-50'
-                              }`}
-                              title={
-                                info.status === 'Paid' || info.status === 'Bank File Generated'
-                                  ? 'Cannot edit - Payment already processed'
-                                  : info.status === 'Approved'
-                                  ? 'Cannot edit - Advance already approved'
-                                  : 'Edit Attendance'
-                              }
-                            >
-                              <Edit className="w-4 h-4" />
-                            </button>
-                            <button
                               onClick={() => handleViewAdvance(employee.id)}
                               className="p-1 text-purple-600 hover:bg-purple-50 rounded"
                               title="Preview Advance Slip"
@@ -1114,16 +923,6 @@ export default function AdvancePayment() {
                                 disabled={info.status !== 'Generated' || needsRecalculation}
                               >
                                 <CheckCircle className={`w-4 h-4 ${info.status !== 'Generated' || needsRecalculation ? 'opacity-30' : ''}`} />
-                              </button>
-                            )}
-                            {info.status === 'Approved' && (
-                              <button
-                                onClick={() => setIndividualPayConfirm(employee.id)}
-                                className="p-1 text-emerald-600 hover:bg-emerald-50 rounded"
-                                title={needsRecalculation ? 'Please recalculate before processing payment' : 'Pay Advance'}
-                                disabled={needsRecalculation}
-                              >
-                                <DollarSign className={`w-4 h-4 ${needsRecalculation ? 'opacity-30' : ''}`} />
                               </button>
                             )}
                           </>
@@ -1350,171 +1149,6 @@ export default function AdvancePayment() {
         </div>
       </div>
 
-      {/* Edit Attendance Modal */}
-      {editingEmployeeId && editingAttendance && (() => {
-        const employee = employees.find(e => e.id === editingEmployeeId);
-        if (!employee) return null;
-
-        return (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg shadow-xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-              {/* Header */}
-              <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
-                <div>
-                  <h3 className="text-lg font-semibold text-slate-900">
-                    Edit Attendance - {selectedMonth}
-                  </h3>
-                  <p className="text-sm text-slate-600 mt-1">
-                    {employee.branchCode} • 1 Employee
-                  </p>
-                </div>
-                <button
-                  onClick={() => {
-                    setEditingEmployeeId(null);
-                    setEditingAttendance(null);
-                  }}
-                  className="p-2 hover:bg-slate-200 rounded-lg transition-colors"
-                >
-                  <X className="w-5 h-5 text-slate-500" />
-                </button>
-              </div>
-
-              {/* Summary Cards */}
-              <div className="px-6 py-4 bg-slate-50 border-b border-slate-200">
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                    <p className="text-xs text-blue-600 font-medium uppercase tracking-wide mb-1">Total Employees</p>
-                    <p className="text-2xl font-bold text-blue-900">1</p>
-                  </div>
-                  <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                    <p className="text-xs text-green-600 font-medium uppercase tracking-wide mb-1">Advance Readiness</p>
-                    <div className="flex items-center gap-2">
-                      <CheckSquare className="w-5 h-5 text-green-600" />
-                      <p className="text-lg font-semibold text-green-900">Ready</p>
-                    </div>
-                  </div>
-                  <div className="bg-slate-100 border border-slate-200 rounded-lg p-4">
-                    <p className="text-xs text-slate-600 font-medium uppercase tracking-wide mb-1">Employee</p>
-                    <p className="text-base font-bold text-slate-900">{employee.fullName}</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Table */}
-              <div className="flex-1 overflow-auto">
-                <table className="w-full">
-                  <thead className="bg-slate-50 border-b border-slate-200 sticky top-0">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Employee No</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Employee Name</th>
-                      <th className="px-4 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider">Attendance Days</th>
-                      <th className="px-4 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider">OT Hours</th>
-                      <th className="px-4 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider">Rest Day Hours</th>
-                      <th className="px-4 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider">PH Hours</th>
-                      <th className="px-4 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider">OT Replacement</th>
-                      <th className="px-4 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider">Unpaid Days</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-slate-200">
-                    <tr>
-                      <td className="px-4 py-3 text-sm text-slate-900">{employee.employeeNo}</td>
-                      <td className="px-4 py-3 text-sm font-medium text-slate-900">{employee.fullName}</td>
-                      <td className="px-4 py-3 text-center">
-                        <input
-                          type="number"
-                          value={editingAttendance.attendanceDays || 0}
-                          onChange={(e) => {
-                            const val = Number(e.target.value);
-                            const maxDays = getMaxDays();
-                            if (val <= maxDays) {
-                              handleAttendanceChange('attendanceDays', val);
-                            } else {
-                              toast.error(`Maximum ${maxDays} days allowed for advance calculation period`);
-                            }
-                          }}
-                          min="0"
-                          max={getMaxDays()}
-                          className="w-20 px-2 py-1 text-center border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <input
-                          type="number"
-                          value={editingAttendance.otHours || 0}
-                          onChange={(e) => handleAttendanceChange('otHours', Number(e.target.value))}
-                          min="0"
-                          step="0.5"
-                          className="w-20 px-2 py-1 text-center border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <input
-                          type="number"
-                          value={editingAttendance.restDayHours || 0}
-                          onChange={(e) => handleAttendanceChange('restDayHours', Number(e.target.value))}
-                          min="0"
-                          step="0.5"
-                          className="w-20 px-2 py-1 text-center border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <input
-                          type="number"
-                          value={editingAttendance.publicHolidayHours || 0}
-                          onChange={(e) => handleAttendanceChange('publicHolidayHours', Number(e.target.value))}
-                          min="0"
-                          step="0.5"
-                          className="w-20 px-2 py-1 text-center border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <input
-                          type="number"
-                          value={editingAttendance.otReplacement || 0}
-                          onChange={(e) => handleAttendanceChange('otReplacement', Number(e.target.value))}
-                          min="0"
-                          step="0.5"
-                          className="w-20 px-2 py-1 text-center border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <input
-                          type="number"
-                          value={editingAttendance.unpaidDays || 0}
-                          onChange={(e) => handleAttendanceChange('unpaidDays', Number(e.target.value))}
-                          min="0"
-                          max="31"
-                          className="w-20 px-2 py-1 text-center border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Footer */}
-              <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-3">
-                <button
-                  onClick={() => {
-                    setEditingEmployeeId(null);
-                    setEditingAttendance(null);
-                  }}
-                  className="px-4 py-2 border border-slate-300 rounded-lg hover:bg-white transition-colors text-slate-700"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleSaveAttendance}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                >
-                  Save Changes
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
-
       {/* Modals */}
       {showGeneratePreview && (
         <AdvanceGeneratePreview
@@ -1575,41 +1209,6 @@ export default function AdvancePayment() {
         />
       )}
 
-      {showPayPreview && (() => {
-        const advancesMap = new Map();
-        filteredEmployees.filter(e => selectedEmployees.has(e.id)).forEach(emp => {
-          const info = getAdvanceInfo(emp.id);
-          advancesMap.set(emp.id, {
-            eligibility: info.eligibility,
-            amount: info.amount,
-            status: info.status,
-          });
-        });
-
-        return (
-          <AdvancePayPreview
-            selectedEmployees={filteredEmployees.filter(e => selectedEmployees.has(e.id))}
-            advances={advancesMap}
-            month={selectedMonth}
-            onConfirm={handlePayPreviewContinue}
-            onCancel={() => setShowPayPreview(false)}
-          />
-        );
-      })()}
-
-      {showPayConfirm && (
-        <ConfirmDialog
-          title="Confirm Payment"
-          message="You are about to process official advance payments."
-          warningBox="This action will update payment status and make bank file generation available."
-          onConfirm={confirmPay}
-          onCancel={() => setShowPayConfirm(false)}
-          confirmText="Yes, Process Payment"
-          cancelText="No, Cancel"
-          confirmStyle="payment"
-        />
-      )}
-
       {viewingAdvance && (
         <PDFViewer
           title="Advance Payment Slip"
@@ -1650,19 +1249,6 @@ export default function AdvancePayment() {
           onExportCSV={handleExportCSV}
           onExportExcel={handleExportExcel}
           onDownloadPDF={handleDownloadBankPDF}
-        />
-      )}
-
-      {showSaveAttendanceConfirm && (
-        <ConfirmDialog
-          title="Save Attendance Changes"
-          message="Save attendance changes? This will update attendance records and sync across all modules."
-          warningBox="Changes will be reflected in Advance, Payroll, and Payslip modules."
-          onConfirm={confirmSaveAttendance}
-          onCancel={() => setShowSaveAttendanceConfirm(false)}
-          confirmText="Yes, Save Changes"
-          cancelText="Cancel"
-          confirmStyle="primary"
         />
       )}
 
@@ -1830,6 +1416,9 @@ export default function AdvancePayment() {
             warningBox="⚠️ WARNING: Once you approve this advance, you will NOT be able to edit attendance records for this employee again. This action will approve the advance payment and allow payment processing."
             onConfirm={() => {
               approveAdvance(individualApproveConfirm, selectedMonth);
+              setTimeout(() => {
+                generatePayroll(selectedMonth, selectedBranch === 'ALL' ? undefined : selectedBranch);
+              }, 100);
               toast.success(`Advance approved for ${employee.fullName}`);
               setIndividualApproveConfirm(null);
             }}
@@ -1837,28 +1426,6 @@ export default function AdvancePayment() {
             confirmText="Yes, Approve Advance"
             cancelText="Cancel"
             confirmStyle="success"
-          />
-        );
-      })()}
-
-      {individualPayConfirm && (() => {
-        const employee = employees.find(e => e.id === individualPayConfirm);
-        if (!employee) return null;
-        const adv = advances.find(a => a.employeeId === individualPayConfirm && a.month === selectedMonth);
-        return (
-          <ConfirmDialog
-            title="Process Advance Payment"
-            message={`Are you sure you want to process advance payment for ${employee.fullName}?`}
-            warningBox={`Payment Amount: RM ${adv?.amount.toFixed(2) || '0.00'}. This action will update payment status.`}
-            onConfirm={() => {
-              payAdvance(individualPayConfirm, selectedMonth);
-              toast.success(`Advance paid for ${employee.fullName}`);
-              setIndividualPayConfirm(null);
-            }}
-            onCancel={() => setIndividualPayConfirm(null)}
-            confirmText="Yes, Process Payment"
-            cancelText="Cancel"
-            confirmStyle="payment"
           />
         );
       })()}
@@ -1895,149 +1462,6 @@ export default function AdvancePayment() {
           />
         );
       })()}
-
-      {/* Bulk Edit Attendance Modal */}
-      {showBulkEditAttendance && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-7xl max-h-[90vh] overflow-hidden flex flex-col">
-            {/* Header */}
-            <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between bg-slate-50">
-              <div>
-                <h3 className="text-base font-semibold text-slate-900">
-                  Edit Attendance - {selectedMonth}
-                </h3>
-                <p className="text-xs text-slate-600 mt-1">
-                  {selectedEmployees.size} Employee{selectedEmployees.size !== 1 ? 's' : ''} Selected
-                </p>
-              </div>
-              <button
-                onClick={() => setShowBulkEditAttendance(false)}
-                className="p-2 hover:bg-slate-200 rounded-lg transition-colors"
-              >
-                <X className="w-4 h-4 text-slate-500" />
-              </button>
-            </div>
-
-            {/* Table */}
-            <div className="flex-1 overflow-auto">
-              <table className="w-full text-xs">
-                <thead className="bg-slate-100 border-b border-slate-200 sticky top-0">
-                  <tr>
-                    <th className="px-3 py-2 text-left font-medium text-slate-700">Employee No</th>
-                    <th className="px-3 py-2 text-left font-medium text-slate-700">Employee Name</th>
-                    <th className="px-3 py-2 text-left font-medium text-slate-700">Branch</th>
-                    <th className="px-3 py-2 text-center font-medium text-slate-700">Attendance Days</th>
-                    <th className="px-3 py-2 text-center font-medium text-slate-700">OT Hours</th>
-                    <th className="px-3 py-2 text-center font-medium text-slate-700">Rest Day Hours</th>
-                    <th className="px-3 py-2 text-center font-medium text-slate-700">PH Hours</th>
-                    <th className="px-3 py-2 text-center font-medium text-slate-700">OT Replacement</th>
-                    <th className="px-3 py-2 text-center font-medium text-slate-700">Unpaid Days</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200">
-                  {Array.from(selectedEmployees).map((empId) => {
-                    const employee = employees.find(e => e.id === empId);
-                    if (!employee) return null;
-                    const attendance = bulkEditAttendanceData.get(empId) || getAttendance(empId);
-
-                    return (
-                      <tr key={empId} className="hover:bg-slate-50">
-                        <td className="px-3 py-2 text-slate-900">{employee.employeeNo}</td>
-                        <td className="px-3 py-2 font-medium text-slate-900">{employee.fullName}</td>
-                        <td className="px-3 py-2 text-slate-600">{employee.branchCode}</td>
-                        <td className="px-3 py-2 text-center">
-                          <input
-                            type="number"
-                            value={attendance.attendanceDays || 0}
-                            onChange={(e) => {
-                              const val = parseInt(e.target.value) || 0;
-                              const maxDays = getMaxDays();
-                              if (val <= maxDays) {
-                                handleBulkAttendanceFieldChange(empId, 'attendanceDays', val);
-                              } else {
-                                toast.error(`Maximum ${maxDays} days allowed for advance calculation period`);
-                              }
-                            }}
-                            min="0"
-                            max={getMaxDays()}
-                            className="w-16 px-2 py-1 text-xs text-center border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          />
-                        </td>
-                        <td className="px-3 py-2 text-center">
-                          <input
-                            type="number"
-                            value={attendance.otHours || 0}
-                            onChange={(e) => handleBulkAttendanceFieldChange(empId, 'otHours', parseFloat(e.target.value) || 0)}
-                            min="0"
-                            step="0.5"
-                            className="w-16 px-2 py-1 text-xs text-center border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          />
-                        </td>
-                        <td className="px-3 py-2 text-center">
-                          <input
-                            type="number"
-                            value={attendance.restDayHours || 0}
-                            onChange={(e) => handleBulkAttendanceFieldChange(empId, 'restDayHours', parseFloat(e.target.value) || 0)}
-                            min="0"
-                            step="0.5"
-                            className="w-16 px-2 py-1 text-xs text-center border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          />
-                        </td>
-                        <td className="px-3 py-2 text-center">
-                          <input
-                            type="number"
-                            value={attendance.publicHolidayHours || 0}
-                            onChange={(e) => handleBulkAttendanceFieldChange(empId, 'publicHolidayHours', parseFloat(e.target.value) || 0)}
-                            min="0"
-                            step="0.5"
-                            className="w-16 px-2 py-1 text-xs text-center border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          />
-                        </td>
-                        <td className="px-3 py-2 text-center">
-                          <input
-                            type="number"
-                            value={attendance.otReplacement || 0}
-                            onChange={(e) => handleBulkAttendanceFieldChange(empId, 'otReplacement', parseInt(e.target.value) || 0)}
-                            min="0"
-                            className="w-16 px-2 py-1 text-xs text-center border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          />
-                        </td>
-                        <td className="px-3 py-2 text-center">
-                          <input
-                            type="number"
-                            value={attendance.unpaidDays || 0}
-                            onChange={(e) => handleBulkAttendanceFieldChange(empId, 'unpaidDays', parseInt(e.target.value) || 0)}
-                            min="0"
-                            max="31"
-                            className="w-16 px-2 py-1 text-xs text-center border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          />
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Footer */}
-            <div className="px-4 py-3 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-3">
-              <button
-                onClick={() => setShowBulkEditAttendance(false)}
-                className="px-4 py-2 text-sm border border-slate-300 rounded-lg hover:bg-white transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSaveBulkAttendance}
-                className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                <Save className="w-4 h-4" />
-                Save Changes
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Navigation Warning Dialog */}
       {showNavigationWarning && (

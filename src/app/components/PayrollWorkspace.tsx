@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { usePayroll, Attendance } from '../context/PayrollContext';
-import { Calculator, Edit, Eye, Lock, DollarSign, Save, Download, FileText } from 'lucide-react';
+import { Calculator, Edit, Eye, Lock, DollarSign, Save, Download, FileText, Maximize2, X } from 'lucide-react';
 import WorkspaceTabs from './WorkspaceTabs';
 import MultiAttendanceEditor from './MultiAttendanceEditor';
 import PayrollPreview from './PayrollPreview';
@@ -31,8 +31,19 @@ interface PayrollRecord {
   manualAdjustment?: number;
   projectName?: string;
   payStructure?: string;
+  normalOtHourlyRate?: number;
   normalOtMultiplier?: number;
+  restDayHourlyRate?: number;
   daysInMonth?: number;
+  restDayMultiplier?: number;
+  restDayHoursPerDay?: number;
+  restDayOtHourlyRate?: number;
+  restDayOtMultiplier?: number;
+  publicHolidayHourlyRate?: number;
+  publicHolidayMultiplier?: number;
+  publicHolidayHoursPerDay?: number;
+  publicHolidayOtHourlyRate?: number;
+  publicHolidayOtMultiplier?: number;
   salaryDeduction?: number;
   uniformDeduction?: number;
 }
@@ -73,6 +84,7 @@ export default function PayrollWorkspace(props: PayrollWorkspaceProps) {
   const [activeTab, setActiveTab] = useState('Employee Details');
   const [bulkEditMode, setBulkEditMode] = useState(false);
   const [showAdjustmentsModal, setShowAdjustmentsModal] = useState(false);
+  const [showExpandedPreview, setShowExpandedPreview] = useState(false);
 
   // Determine mode: single employee or multi-selection
   const isMultiMode = props.selectedEmployees.size > 0 && !props.employee;
@@ -380,15 +392,27 @@ export default function PayrollWorkspace(props: PayrollWorkspaceProps) {
                   <p className="text-sm font-semibold text-slate-900">{payroll?.normalOtMultiplier ? `${payroll.normalOtMultiplier}x` : 'Standard (1.5x)'}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-slate-600">Status</p>
-                  <span className={`text-xs px-2 py-0.5 rounded-full ${
-                    payroll!.status === 'Bank File Generated' ? 'bg-indigo-100 text-indigo-800' :
-                    payroll!.status === 'Paid' ? 'bg-emerald-100 text-emerald-800' :
-                    payroll!.status === 'Finalized' ? 'bg-green-100 text-green-800' :
-                    'bg-orange-100 text-orange-800'
-                  }`}>
-                    {payroll!.status}
-                  </span>
+                  <p className="text-xs text-slate-600 mb-1">Status</p>
+                  <div className="flex items-center gap-3">
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${
+                      payroll!.status === 'Bank File Generated' ? 'bg-indigo-100 text-indigo-800' :
+                      payroll!.status === 'Paid' ? 'bg-emerald-100 text-emerald-800' :
+                      payroll!.status === 'Finalized' ? 'bg-green-100 text-green-800' :
+                      'bg-orange-100 text-orange-800'
+                    }`}>
+                      {payroll!.status}
+                    </span>
+                    {payroll!.status === 'Finalized' && props.onRevertToDraft && (
+                      <button
+                        onClick={props.onRevertToDraft}
+                        className="flex items-center gap-1.5 px-2.5 py-1 bg-orange-50 text-orange-700 text-xs font-medium rounded hover:bg-orange-100 border border-orange-200 transition-colors"
+                        title="Revert back to Draft status"
+                      >
+                        <Edit className="w-3.5 h-3.5" />
+                        Revert to Draft
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -460,7 +484,7 @@ export default function PayrollWorkspace(props: PayrollWorkspaceProps) {
                     />
                   </div>
                   <div>
-                    <label className="text-xs text-slate-600">Normal OT Days</label>
+                    <label className="text-xs text-slate-600">Normal OT Hours</label>
                     <input
                       type="number"
                       min="0"
@@ -482,7 +506,7 @@ export default function PayrollWorkspace(props: PayrollWorkspaceProps) {
                     />
                   </div>
                   <div>
-                    <label className="text-xs text-slate-600">Rest Day OT Days</label>
+                    <label className="text-xs text-slate-600">Rest Day OT Hours</label>
                     <input
                       type="number"
                       min="0"
@@ -504,7 +528,7 @@ export default function PayrollWorkspace(props: PayrollWorkspaceProps) {
                     />
                   </div>
                   <div>
-                    <label className="text-xs text-slate-600">PH OT Days</label>
+                    <label className="text-xs text-slate-600">PH OT Hours</label>
                     <input
                       type="number"
                       min="0"
@@ -604,8 +628,8 @@ export default function PayrollWorkspace(props: PayrollWorkspaceProps) {
                     <p className="text-lg font-semibold text-slate-900">{activeAttendance?.normalDays || 0} days</p>
                   </div>
                   <div>
-                    <p className="text-xs text-slate-600">Normal OT Days</p>
-                    <p className="text-lg font-semibold text-slate-900">{activeAttendance?.otHours?.toFixed(2) || '0.00'} days</p>
+                    <p className="text-xs text-slate-600">Normal OT Hours</p>
+                    <p className="text-lg font-semibold text-slate-900">{activeAttendance?.otHours?.toFixed(2) || '0.00'} h</p>
                   </div>
                   <div>
                     <p className="text-xs text-slate-600">Rest Days</p>
@@ -616,12 +640,12 @@ export default function PayrollWorkspace(props: PayrollWorkspaceProps) {
                     <p className="text-lg font-semibold text-slate-900">{activeAttendance?.publicHolidays || 0} days</p>
                   </div>
                   <div>
-                    <p className="text-xs text-slate-600">Rest Day OT Days</p>
-                    <p className="text-lg font-semibold text-slate-900">{activeAttendance?.restDayHours?.toFixed(2) || '0.00'} days</p>
+                    <p className="text-xs text-slate-600">Rest Day OT Hours</p>
+                    <p className="text-lg font-semibold text-slate-900">{activeAttendance?.restDayHours?.toFixed(2) || '0.00'} h</p>
                   </div>
                   <div>
-                    <p className="text-xs text-slate-600">PH OT Days</p>
-                    <p className="text-lg font-semibold text-slate-900">{activeAttendance?.publicHolidayHours?.toFixed(2) || '0.00'} days</p>
+                    <p className="text-xs text-slate-600">PH OT Hours</p>
+                    <p className="text-lg font-semibold text-slate-900">{activeAttendance?.publicHolidayHours?.toFixed(2) || '0.00'} h</p>
                   </div>
                   <div>
                     <p className="text-xs text-slate-600">OT Replacement</p>
@@ -707,15 +731,23 @@ export default function PayrollWorkspace(props: PayrollWorkspaceProps) {
                     <div className="flex items-center justify-between py-1.5 border-b border-slate-100">
                       <span className="text-sm text-slate-500">
                         Normal Day OT 
-                        <span className="block text-xs text-slate-400">({payroll.payStructure || 'Standard'}, @ {payroll.normalOtMultiplier ? `${payroll.normalOtMultiplier}x` : '1.5x'})</span>
+                        <span className="block text-xs text-slate-400">
+                          ({payroll.payStructure || 'Standard'}, RM {(payroll.normalOtHourlyRate || ((payroll.basicSalary / 26) / 8)).toFixed(4)} @ {payroll.normalOtMultiplier ? `${payroll.normalOtMultiplier}x` : '1.5x'})
+                        </span>
                       </span>
                       <span className="text-sm font-medium text-slate-800">RM {(payroll.otPay || 0).toFixed(2)}</span>
                     </div>
                     {(() => {
-                      const hourlyRate = (payroll.basicSalary / (payroll.daysInMonth || 26)) / 8;
-                      const restDayBasePay = (activeAttendance?.restDays || 0) * 8 * hourlyRate * (payroll.restDayMultiplier || 1.0);
+                      const fallbackHourlyRate = (payroll.basicSalary / 26) / 8;
+                      const restDayBasePay = (activeAttendance?.restDays || 0) *
+                        (payroll.restDayHoursPerDay || 8) *
+                        (payroll.restDayHourlyRate || fallbackHourlyRate) *
+                        (payroll.restDayMultiplier || 1.0);
                       const restDayOtPay = Math.max(0, payroll.restDayPay - restDayBasePay);
-                      const phBasePay = (activeAttendance?.publicHolidays || 0) * 8 * hourlyRate * (payroll.publicHolidayMultiplier || 2.0);
+                      const phBasePay = (activeAttendance?.publicHolidays || 0) *
+                        (payroll.publicHolidayHoursPerDay || 8) *
+                        (payroll.publicHolidayHourlyRate || fallbackHourlyRate) *
+                        (payroll.publicHolidayMultiplier || 2.0);
                       const phOtPay = Math.max(0, payroll.publicHolidayPay - phBasePay);
 
                       return (
@@ -805,10 +837,10 @@ export default function PayrollWorkspace(props: PayrollWorkspaceProps) {
                           </span>
                           <span className="text-sm font-medium text-red-600">RM {displayUnpaidDeduction.toFixed(2)}</span>
                         </div>
-                        {props.advanceAmount > 0 && (
+                        {payroll.advance > 0 && (
                           <div className="flex items-center justify-between py-1.5 border-b border-slate-100">
                             <span className="text-sm text-slate-500">Advance Deduction</span>
-                            <span className="text-sm font-medium text-red-600">RM {props.advanceAmount.toFixed(2)}</span>
+                            <span className="text-sm font-medium text-red-600">RM {payroll.advance.toFixed(2)}</span>
                           </div>
                         )}
                         {payroll.uniformDeduction > 0 && (
@@ -952,6 +984,15 @@ export default function PayrollWorkspace(props: PayrollWorkspaceProps) {
                     Download PDF
                   </button>
                 )}
+                {payroll && (
+                  <button
+                    onClick={() => setShowExpandedPreview(true)}
+                    className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800"
+                  >
+                    <Maximize2 className="w-4 h-4" />
+                    Expand
+                  </button>
+                )}
               </div>
             </div>
             {!payroll ? (
@@ -970,11 +1011,38 @@ export default function PayrollWorkspace(props: PayrollWorkspaceProps) {
         )}
       </div>
 
+      {showExpandedPreview && props.employee && props.payroll && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-7xl max-h-[92vh] flex flex-col overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
+              <div>
+                <h3 className="font-semibold text-slate-900">Expanded Payslip Preview</h3>
+                <p className="text-sm text-slate-500">{props.employee.fullName} • {props.selectedMonth}</p>
+              </div>
+              <button
+                onClick={() => setShowExpandedPreview(false)}
+                className="p-2 hover:bg-slate-100 rounded-lg text-slate-500"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto bg-slate-100 p-6">
+              <div className="bg-white shadow-sm max-w-6xl mx-auto">
+                <PayrollPreview employee={props.employee} payroll={props.payroll} />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showAdjustmentsModal && props.employee && props.payroll && props.onAdjustments && (
         <PayrollAdjustmentsModal
           employee={props.employee}
           payroll={props.payroll}
-          onSave={props.onAdjustments}
+          onSave={(reimbursements, uniformDeduction) => {
+            props.onAdjustments!(reimbursements, uniformDeduction);
+            setShowAdjustmentsModal(false);
+          }}
           onClose={() => setShowAdjustmentsModal(false)}
         />
       )}

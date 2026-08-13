@@ -22,7 +22,8 @@ export default function AttendanceEntry() {
     generatePayroll,
     attendanceCycles,
     createAttendanceCycle,
-    getAttendanceCycle
+    getAttendanceCycle,
+    getMonthlyAttendance
   } = usePayroll();
 
   const [activeView, setActiveView] = useState<'entry' | 'history'>('entry');
@@ -169,17 +170,7 @@ export default function AttendanceEntry() {
   }, [searchTerm, selectedBranch, selectedMonth]);
 
   const getAttendance = (employeeId: string): Attendance => {
-    const existing = attendance.find(a => a.employeeId === employeeId && a.month === selectedMonth);
-    return existing || {
-      employeeId,
-      month: selectedMonth,
-      attendanceDays: 0,
-      otHours: 0,
-      restDayHours: 0,
-      publicHolidayHours: 0,
-      otReplacement: 0,
-      unpaidDays: 0,
-    };
+    return getMonthlyAttendance(employeeId, selectedMonth);
   };
 
   const toggleSelectEmployee = (employeeId: string) => {
@@ -484,7 +475,7 @@ export default function AttendanceEntry() {
             <Calendar className="w-4 h-4" />
             Attendance Entry
           </button>
-          <button
+          {/* <button
             onClick={() => setActiveView('history')}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
               activeView === 'history'
@@ -494,7 +485,7 @@ export default function AttendanceEntry() {
           >
             <List className="w-4 h-4" />
             Attendance Records
-          </button>
+          </button> */}
         </div>
       </div>
 

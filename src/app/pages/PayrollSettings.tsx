@@ -14,6 +14,8 @@ export default function PayrollSettings() {
   const [saveConfirm, setSaveConfirm] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [viewingTable, setViewingTable] = useState<'socso' | 'eis' | 'skbbk' | null>(null);
+  const [totalGrossDrafts, setTotalGrossDrafts] = useState<Record<string, string>>({});
+  const [editingTotalGrossField, setEditingTotalGrossField] = useState<string | null>(null);
 
   // Sync local form state when the context settings are loaded/updated from the database
   useEffect(() => {
@@ -150,6 +152,48 @@ export default function PayrollSettings() {
       handleChange(field, JSON.stringify(newData));
     };
 
+    const getDefaultDays = (dayType: string) => {
+      if (dayType === 'Normal Day' || dayType === 'Normal Day OT') return 26;
+      if (dayType === 'Rest Day' || dayType === 'Rest Day OT') return 4;
+      if (dayType === 'Public Holiday' || dayType === 'Public Holiday OT') return 1;
+      return 0;
+    };
+
+    const handleEstimatedGoalChange = (index: number, total: number, previewDays: number) => {
+      const row = parsedData[index];
+      const base = previewDays * Number(row.hourlyRate || 0) * Number(row.hours || 0);
+      const newMultiplier = base > 0 && Number.isFinite(total) ? total / base : 0;
+      handleTableChange(index, 'multiplier', parseFloat(newMultiplier.toFixed(4)));
+    };
+
+    const getTotalEstimatedGross = (rows: any[]) => rows.reduce((sum, row) => {
+      const days = getDefaultDays(row.dayType);
+      return sum + (days * Number(row.hourlyRate || 0) * Number(row.multiplier || 0) * Number(row.hours || 0));
+    }, 0);
+
+    const handleTotalEstimatedGrossChange = (targetTotal: number) => {
+      if (!Number.isFinite(targetTotal)) return;
+
+      const normalOtIndex = parsedData.findIndex(row => row.dayType === 'Normal Day OT');
+      if (normalOtIndex < 0) return;
+
+      const normalOtRow = parsedData[normalOtIndex];
+      const normalOtBase = getDefaultDays(normalOtRow.dayType) *
+        Number(normalOtRow.hourlyRate || 0) *
+        Number(normalOtRow.hours || 0);
+      if (normalOtBase <= 0) return;
+
+      const totalWithoutNormalOt = parsedData.reduce((sum, row, index) => {
+        if (index === normalOtIndex) return sum;
+        const days = getDefaultDays(row.dayType);
+        return sum + (days * Number(row.hourlyRate || 0) * Number(row.multiplier || 0) * Number(row.hours || 0));
+      }, 0);
+
+      const requiredNormalOtTotal = Math.max(0, targetTotal - totalWithoutNormalOt);
+      const newMultiplier = requiredNormalOtTotal / normalOtBase;
+      handleTableChange(normalOtIndex, 'multiplier', parseFloat(newMultiplier.toFixed(4)));
+    };
+
     return (
       <div className="mt-6 border border-slate-200 rounded-lg overflow-hidden">
         <div className="bg-slate-50 px-4 py-3 border-b border-slate-200 font-semibold text-slate-800">
@@ -164,18 +208,11 @@ export default function PayrollSettings() {
                 <th className="px-4 py-3 font-medium">Multiplier</th>
                 <th className="px-4 py-3 font-medium">Hours</th>
                 <th className="px-4 py-3 font-medium border-l border-slate-200 bg-blue-50/50 text-blue-800">Days (Preview)</th>
-                <th className="px-4 py-3 font-medium bg-blue-50/50 text-blue-800">Estimated Gross (RM)</th>
+                <th className="px-4 py-3 font-medium bg-blue-50/50 text-blue-800">Total Estimated Goal (RM)</th>
               </tr>
             </thead>
             <tbody>
               {parsedData.map((row, index) => {
-                const getDefaultDays = (dayType: string) => {
-                  if (dayType === 'Normal Day' || dayType === 'Normal Day OT') return 26;
-                  if (dayType === 'Rest Day' || dayType === 'Rest Day OT') return 4;
-                  if (dayType === 'Public Holiday' || dayType === 'Public Holiday OT') return 1;
-                  return 0;
-                };
-                
                 const previewDays = getDefaultDays(row.dayType);
                 const estimatedGross = previewDays * (row.hourlyRate || 0) * (row.multiplier || 0) * (row.hours || 0);
 
@@ -194,8 +231,14 @@ export default function PayrollSettings() {
                     <td className="px-4 py-2 border-l border-slate-200 bg-blue-50/30 text-center font-medium text-slate-700">
                       {previewDays}
                     </td>
-                    <td className="px-4 py-2 bg-blue-50/30 font-mono text-blue-900 font-semibold text-right">
-                      {estimatedGross.toFixed(2)}
+                    <td className="px-4 py-2 bg-blue-50/30">
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={Number.isFinite(estimatedGross) ? estimatedGross.toFixed(2) : '0.00'}
+                        onChange={(e) => handleEstimatedGoalChange(index, parseFloat(e.target.value), previewDays)}
+                        className="w-full px-2 py-1 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-right font-mono text-blue-900 font-semibold"
+                      />
                     </td>
                   </tr>
                 );
@@ -204,16 +247,31 @@ export default function PayrollSettings() {
             <tfoot className="bg-blue-50/50 border-t border-slate-200 font-semibold text-blue-900">
               <tr>
                 <td colSpan={5} className="px-4 py-3 text-right">Total Estimated Gross (RM):</td>
-                <td className="px-4 py-3 text-right font-mono text-base">
-                  {parsedData.reduce((sum, row) => {
-                    const days = (() => {
-                      if (row.dayType === 'Normal Day' || row.dayType === 'Normal Day OT') return 26;
-                      if (row.dayType === 'Rest Day' || row.dayType === 'Rest Day OT') return 4;
-                      if (row.dayType === 'Public Holiday' || row.dayType === 'Public Holiday OT') return 1;
-                      return 0;
-                    })();
-                    return sum + (days * (row.hourlyRate || 0) * (row.multiplier || 0) * (row.hours || 0));
-                  }, 0).toFixed(2)}
+                <td className="px-4 py-3">
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={editingTotalGrossField === field ? (totalGrossDrafts[field] ?? '') : getTotalEstimatedGross(parsedData).toFixed(2)}
+                    onFocus={() => {
+                      setEditingTotalGrossField(field);
+                      setTotalGrossDrafts(prev => ({ ...prev, [field]: getTotalEstimatedGross(parsedData).toFixed(2) }));
+                    }}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      if (!/^\d*\.?\d*$/.test(value)) return;
+                      setTotalGrossDrafts(prev => ({ ...prev, [field]: value }));
+                      handleTotalEstimatedGrossChange(value ? parseFloat(value) : NaN);
+                    }}
+                    onBlur={() => {
+                      setEditingTotalGrossField(null);
+                      setTotalGrossDrafts(prev => {
+                        const next = { ...prev };
+                        delete next[field];
+                        return next;
+                      });
+                    }}
+                    className="w-full px-2 py-1 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-right font-mono text-base font-semibold text-blue-900"
+                  />
                 </td>
               </tr>
             </tfoot>
@@ -301,12 +359,12 @@ export default function PayrollSettings() {
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">
-                Default Uniform Reimbursement (RM)
+                Default Uniform Deduction (RM)
               </label>
               <input
                 type="number"
-                value={formData.defaultUniformReimbursement ?? 100}
-                onChange={(e) => handleChange('defaultUniformReimbursement', parseFloat(e.target.value))}
+                value={formData.defaultUniformDeduction ?? 100}
+                onChange={(e) => handleChange('defaultUniformDeduction', parseFloat(e.target.value))}
                 step="1"
                 min="0"
                 className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -579,7 +637,7 @@ export default function PayrollSettings() {
                   Basic Salary + OT Pay + Rest Day Pay + Public Holiday Pay + OT Replacement + Reimbursements + Manual Adjustments
                 </p>
                 <p className="text-xs text-blue-700 mt-1">
-                  Reimbursements include standard allowances and the Default Uniform Reimbursement for new employees.
+                  Reimbursements include standard allowances.
                 </p>
               </div>
               <div>
@@ -588,7 +646,7 @@ export default function PayrollSettings() {
                   EPF ({formData.epfRate}%) + SOCSO ({formData.socsoEmployee}%) + SIP ({formData.sipRate}%) + SKBBK + Advance + Uniform + Unpaid Days
                 </p>
                 <p className="text-xs text-blue-700 mt-1">
-                  SKBBK and statutory deductions are automatically matched from their respective tables based on total eligible wages.
+                  SKBBK and statutory deductions are automatically matched from their respective tables based on total eligible wages. The Default Uniform Deduction applies to new employees.
                 </p>
               </div>
               <div>

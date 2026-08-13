@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Building2, Users, DollarSign, MapPin, Phone, Mail, Plus, Eye, Pencil, UserPlus, XCircle, X, Save, Loader2, Trash2, CheckCircle, ChevronLeft, ChevronRight, Edit, Briefcase, Table2 } from 'lucide-react';
+import { Building2, Users, DollarSign, MapPin, Phone, Mail, Plus, Eye, Pencil, UserPlus, XCircle, X, Save, Loader2, Trash2, CheckCircle, ChevronLeft, ChevronRight, Edit, Briefcase, Table2, Search } from 'lucide-react';
 import { usePayroll, Branch, Project } from '../context/PayrollContext';
 import { toast } from 'sonner';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -38,6 +38,8 @@ export default function BranchManagement() {
     payStructure: '8+3',
     status: 'Active'
   });
+  const [customOtTotalDraft, setCustomOtTotalDraft] = useState('');
+  const [isEditingCustomOtTotal, setIsEditingCustomOtTotal] = useState(false);
   const [assignedEmployeesToProject, setAssignedEmployeesToProject] = useState<string[]>([]);
   const [assigningToBranch, setAssigningToBranch] = useState<Branch | null>(null);
   const [selectedEmployee, setSelectedEmployee] = useState<string>('');
@@ -48,6 +50,12 @@ export default function BranchManagement() {
   const itemsPerPage = 3;
   const [employeeCurrentPage, setEmployeeCurrentPage] = useState(1);
   const employeesPerPage = 5;
+  const [branchSearchTerm, setBranchSearchTerm] = useState('');
+  const [branchStatusFilter, setBranchStatusFilter] = useState<'ALL' | 'Active' | 'Inactive'>('ALL');
+  const [branchLocationFilter, setBranchLocationFilter] = useState('ALL');
+  const [branchSortBy, setBranchSortBy] = useState<'name' | 'code' | 'location' | 'staff'>('name');
+  const [employeeSearchTerm, setEmployeeSearchTerm] = useState('');
+  const [employeeSortBy, setEmployeeSortBy] = useState<'name' | 'employeeNo' | 'position'>('name');
 
   const [newBranch, setNewBranch] = useState<Branch>({
     code: '',
@@ -98,6 +106,29 @@ export default function BranchManagement() {
       employees: branchEmployees,
     };
   };
+
+  const branchLocations = Array.from(new Set(branches.map(b => b.location).filter(Boolean))).sort();
+  const filteredBranches = branches
+    .filter(branch => {
+      const search = branchSearchTerm.trim().toLowerCase();
+      const matchesSearch = !search ||
+        branch.name.toLowerCase().includes(search) ||
+        branch.code.toLowerCase().includes(search) ||
+        (branch.location || '').toLowerCase().includes(search);
+      const matchesStatus = branchStatusFilter === 'ALL' || branch.status === branchStatusFilter;
+      const matchesLocation = branchLocationFilter === 'ALL' || branch.location === branchLocationFilter;
+      return matchesSearch && matchesStatus && matchesLocation;
+    })
+    .sort((a, b) => {
+      if (branchSortBy === 'staff') {
+        return getBranchStats(b.code).totalStaff - getBranchStats(a.code).totalStaff;
+      }
+      return String(a[branchSortBy] || '').localeCompare(String(b[branchSortBy] || ''));
+    });
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [branchSearchTerm, branchStatusFilter, branchLocationFilter, branchSortBy]);
 
   const handleAddBranch = () => {
     setNewBranch({
@@ -237,12 +268,16 @@ export default function BranchManagement() {
     setShowAddProject(false);
     setEditingProjectId(null);
     setNewProject({ name: '', payStructure: '8+3', status: 'Active', customOtMultiplier: undefined });
+    setCustomOtTotalDraft('');
+    setIsEditingCustomOtTotal(false);
     setAssignedEmployeesToProject([]);
   };
 
   const handleEditProject = (project: Project) => {
     setEditingProjectId(project.id);
     setNewProject({ ...project });
+    setCustomOtTotalDraft('');
+    setIsEditingCustomOtTotal(false);
     const assignedEmps = employees.filter(e => e.projectId === project.id).map(e => e.id);
     setAssignedEmployeesToProject(assignedEmps);
     setShowAddProject(true);
@@ -337,10 +372,10 @@ export default function BranchManagement() {
   const currentStats = getBranchStats(selectedBranch);
 
   // Pagination calculations
-  const totalPages = Math.ceil(branches.length / itemsPerPage);
+  const totalPages = Math.ceil(filteredBranches.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
-  const paginatedBranches = branches.slice(startIndex, endIndex);
+  const paginatedBranches = filteredBranches.slice(startIndex, endIndex);
 
   // Reset to page 1 if current page exceeds total pages
   useEffect(() => {
@@ -415,6 +450,50 @@ export default function BranchManagement() {
             </option>
           ))}
         </select>
+      </div>
+
+      <div className="bg-white rounded-lg shadow p-3">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+          <div className="relative md:col-span-1">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={branchSearchTerm}
+              onChange={(e) => setBranchSearchTerm(e.target.value)}
+              placeholder="Search branch, code, location..."
+              className="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <select
+            value={branchLocationFilter}
+            onChange={(e) => setBranchLocationFilter(e.target.value)}
+            className="px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="ALL">All Locations</option>
+            {branchLocations.map(location => (
+              <option key={location} value={location}>{location}</option>
+            ))}
+          </select>
+          <select
+            value={branchStatusFilter}
+            onChange={(e) => setBranchStatusFilter(e.target.value as 'ALL' | 'Active' | 'Inactive')}
+            className="px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="ALL">All Status</option>
+            <option value="Active">Active</option>
+            <option value="Inactive">Inactive</option>
+          </select>
+          <select
+            value={branchSortBy}
+            onChange={(e) => setBranchSortBy(e.target.value as 'name' | 'code' | 'location' | 'staff')}
+            className="px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="name">Sort by Name</option>
+            <option value="code">Sort by Code</option>
+            <option value="location">Sort by Location</option>
+            <option value="staff">Sort by Staff Count</option>
+          </select>
+        </div>
       </div>
 
       {/* Branch Overview Cards */}
@@ -595,6 +674,13 @@ export default function BranchManagement() {
                   </tr>
                 );
               })}
+              {paginatedBranches.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="px-6 py-10 text-center text-sm text-slate-500">
+                    No branches match the selected search, sort, or filter.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -603,7 +689,7 @@ export default function BranchManagement() {
         {totalPages > 1 && (
           <div className="p-4 border-t border-slate-200 flex items-center justify-between">
             <div className="text-sm text-slate-600">
-              Showing {startIndex + 1} to {Math.min(endIndex, branches.length)} of {branches.length} branches
+              Showing {filteredBranches.length === 0 ? 0 : startIndex + 1} to {Math.min(endIndex, filteredBranches.length)} of {filteredBranches.length} branches
             </div>
             <div className="flex items-center gap-2">
               <button
@@ -803,36 +889,6 @@ export default function BranchManagement() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">OT Rate (RM/hour)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={newBranch.otRate}
-                    onChange={(e) => setNewBranch({ ...newBranch, otRate: parseFloat(e.target.value) })}
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Rest Day Rate (RM/hour)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={newBranch.restDayRate}
-                    onChange={(e) => setNewBranch({ ...newBranch, restDayRate: parseFloat(e.target.value) })}
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Public Holiday Rate (RM/hour)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={newBranch.publicHolidayRate}
-                    onChange={(e) => setNewBranch({ ...newBranch, publicHolidayRate: parseFloat(e.target.value) })}
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">Status</label>
                   <select
                     value={newBranch.status}
@@ -950,36 +1006,6 @@ export default function BranchManagement() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">OT Rate (RM/hour)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={editingBranch.otRate}
-                    onChange={(e) => setEditingBranch({ ...editingBranch, otRate: parseFloat(e.target.value) })}
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Rest Day Rate (RM/hour)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={editingBranch.restDayRate}
-                    onChange={(e) => setEditingBranch({ ...editingBranch, restDayRate: parseFloat(e.target.value) })}
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Public Holiday Rate (RM/hour)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={editingBranch.publicHolidayRate}
-                    onChange={(e) => setEditingBranch({ ...editingBranch, publicHolidayRate: parseFloat(e.target.value) })}
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">Status</label>
                   <select
                     value={editingBranch.status}
@@ -1025,14 +1051,56 @@ export default function BranchManagement() {
               <div className="flex justify-between items-center mb-4">
                 <h4 className="font-semibold text-slate-900">Projects</h4>
                 <button
-                  onClick={() => setShowAddProject(true)}
+                  onClick={() => {
+                    setCustomOtTotalDraft('');
+                    setIsEditingCustomOtTotal(false);
+                    setShowAddProject(true);
+                  }}
                   className="flex items-center gap-1 px-3 py-1.5 bg-blue-50 text-blue-600 font-medium rounded hover:bg-blue-100 transition-colors text-sm"
                 >
                   <Plus className="w-4 h-4" /> Add Project
                 </button>
               </div>
 
-              {showAddProject && (
+              {showAddProject && (() => {
+                const getPreviewDays = (dayType: string) => {
+                  if (dayType === 'Normal Day' || dayType === 'Normal Day OT') return 26;
+                  if (dayType === 'Rest Day' || dayType === 'Rest Day OT') return 4;
+                  if (dayType === 'Public Holiday' || dayType === 'Public Holiday OT') return 1;
+                  return 0;
+                };
+
+                let rawData = [];
+                try {
+                  if (newProject.payStructure === '8+3') rawData = JSON.parse(settings.eightPlusThreeData || '[]');
+                  else rawData = JSON.parse(settings.eightPlusFourData || '[]');
+                } catch(e) {}
+
+                let sumOthers = 0;
+                let normalOtBase = 0;
+                let defaultOtMultiplier = 1.5;
+
+                rawData.forEach((row: any) => {
+                  const hourlyRate = Number(row.hourlyRate || 0);
+                  const hours = Number(row.hours || 0);
+                  const standardMultiplier = Number(row.multiplier || 0);
+                  const previewDays = getPreviewDays(row.dayType);
+
+                  if (row.dayType === 'Normal Day OT') {
+                    normalOtBase = previewDays * hourlyRate * hours;
+                    defaultOtMultiplier = standardMultiplier;
+                  } else {
+                    sumOthers += previewDays * hourlyRate * hours * standardMultiplier;
+                  }
+                });
+
+                const effectiveOtMultiplier = newProject.customOtMultiplier !== undefined && newProject.customOtMultiplier !== null
+                  ? newProject.customOtMultiplier 
+                  : defaultOtMultiplier;
+                
+                const currentGrossTotal = sumOthers + (normalOtBase * effectiveOtMultiplier);
+
+                return (
                 <div className="bg-slate-50 p-5 rounded-lg mb-6 border border-slate-200 shadow-sm">
                   <h5 className="font-medium text-slate-800 mb-4">{editingProjectId ? 'Edit Project' : 'Create New Project'}</h5>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 mb-5">
@@ -1050,7 +1118,11 @@ export default function BranchManagement() {
                       <label className="block text-xs font-medium text-slate-700 mb-1">Pay Structure</label>
                       <select
                         value={newProject.payStructure}
-                        onChange={(e) => setNewProject({ ...newProject, payStructure: e.target.value as '8+3' | '8+4' })}
+                        onChange={(e) => {
+                          setCustomOtTotalDraft('');
+                          setIsEditingCustomOtTotal(false);
+                          setNewProject({ ...newProject, payStructure: e.target.value as '8+3' | '8+4' });
+                        }}
                         className="w-full px-3 py-2 border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                       >
                         <option value="8+3">8+3 Structure</option>
@@ -1063,12 +1135,49 @@ export default function BranchManagement() {
                         type="number"
                         step="0.01"
                         value={newProject.customOtMultiplier || ''}
-                        onChange={(e) => setNewProject({ ...newProject, customOtMultiplier: e.target.value ? parseFloat(e.target.value) : undefined })}
+                        onChange={(e) => {
+                          setCustomOtTotalDraft('');
+                          setIsEditingCustomOtTotal(false);
+                          setNewProject({ ...newProject, customOtMultiplier: e.target.value ? parseFloat(e.target.value) : undefined });
+                        }}
                         className="w-full px-3 py-2 border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                         placeholder="e.g. 1.5"
                       />
                       <p className="text-xs text-slate-500 mt-1">
                         If set, this overrides the default Normal Day OT multiplier.
+                      </p>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700 mb-1">Target Gross Salary (RM) for Preview Days</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={isEditingCustomOtTotal ? customOtTotalDraft : currentGrossTotal.toFixed(2)}
+                        onFocus={() => {
+                          setIsEditingCustomOtTotal(true);
+                          setCustomOtTotalDraft(currentGrossTotal.toFixed(2));
+                        }}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setCustomOtTotalDraft(val);
+                          const target = parseFloat(val);
+                          if (!isNaN(target) && normalOtBase > 0) {
+                            const requiredOt = target - sumOthers;
+                            const newMultiplier = Math.max(0, requiredOt / normalOtBase);
+                            setNewProject({ ...newProject, customOtMultiplier: parseFloat(newMultiplier.toFixed(4)) });
+                          } else if (val === '') {
+                            setNewProject({ ...newProject, customOtMultiplier: undefined });
+                          }
+                        }}
+                        onBlur={() => {
+                          setIsEditingCustomOtTotal(false);
+                          setCustomOtTotalDraft('');
+                        }}
+                        className="w-full px-3 py-2 border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                        placeholder="e.g. 4000.00"
+                      />
+                      <p className="text-xs text-slate-500 mt-1">
+                        Automatically calculates the required OT multiplier to hit this goal.
                       </p>
                     </div>
                     
@@ -1077,44 +1186,75 @@ export default function BranchManagement() {
                         <Table2 className="w-4 h-4 text-blue-500" />
                         Preview: {newProject.payStructure} Multiplier Table
                       </h6>
-                      <div className="overflow-hidden border border-slate-200 rounded text-xs bg-white">
+                      <div className="overflow-x-auto border border-slate-200 rounded text-xs bg-white">
                         <table className="w-full">
                           <thead className="bg-slate-100">
                             <tr>
-                              <th className="px-3 py-2 text-left font-medium text-slate-600">Day Type</th>
-                              <th className="px-3 py-2 text-left font-medium text-slate-600">Standard Multiplier</th>
-                              <th className="px-3 py-2 text-left font-medium text-slate-600">Effective Multiplier</th>
+                              <th className="px-3 py-2 text-left font-medium text-slate-600">Work Day</th>
+                              <th className="px-3 py-2 text-left font-medium text-slate-600">Hourly Payment Rate</th>
+                              <th className="px-3 py-2 text-left font-medium text-slate-600">Multiplier</th>
+                              <th className="px-3 py-2 text-left font-medium text-slate-600">Hours</th>
+                              <th className="px-3 py-2 text-left font-medium text-slate-600">Days (Preview)</th>
+                              <th className="px-3 py-2 text-left font-medium text-slate-600">Total Estimated Goal (RM)</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
                             {(() => {
                               let rawData = [];
+                              const getPreviewDays = (dayType: string) => {
+                                if (dayType === 'Normal Day' || dayType === 'Normal Day OT') return 26;
+                                if (dayType === 'Rest Day' || dayType === 'Rest Day OT') return 4;
+                                if (dayType === 'Public Holiday' || dayType === 'Public Holiday OT') return 1;
+                                return 0;
+                              };
+
                               try {
                                 if (newProject.payStructure === '8+3') rawData = JSON.parse(settings.eightPlusThreeData || '[]');
                                 else rawData = JSON.parse(settings.eightPlusFourData || '[]');
                               } catch(e) {}
                               
                               if (rawData.length === 0) {
-                                return <tr><td colSpan={3} className="px-3 py-3 text-center text-slate-500">No data configured in settings.</td></tr>;
+                                return <tr><td colSpan={6} className="px-3 py-3 text-center text-slate-500">No data configured in settings.</td></tr>;
                               }
 
                               return rawData.map((row: any, i: number) => {
                                 const isNormalOT = row.dayType === 'Normal Day OT';
                                 const overrideVal = newProject.customOtMultiplier;
                                 const isOverridden = isNormalOT && overrideVal !== undefined && overrideVal !== null;
+                                const hourlyRate = Number(row.hourlyRate || 0);
+                                const hours = Number(row.hours || 0);
+                                const standardMultiplier = Number(row.multiplier || 0);
+                                const effectiveMultiplier = isOverridden ? Number(overrideVal) : standardMultiplier;
+                                const previewDays = getPreviewDays(row.dayType);
+                                const estimatedGoal = previewDays * hourlyRate * hours * effectiveMultiplier;
                                 
                                 return (
                                   <tr key={i} className={isOverridden ? 'bg-amber-50' : ''}>
                                     <td className="px-3 py-2 font-medium text-slate-700">{row.dayType}</td>
-                                    <td className="px-3 py-2 text-slate-500">{row.multiplier.toFixed(2)}x</td>
+                                    <td className="px-3 py-2 text-slate-600">{hourlyRate.toFixed(4)}</td>
                                     <td className={`px-3 py-2 font-bold ${isOverridden ? 'text-amber-700' : 'text-slate-900'}`}>
-                                      {isOverridden ? `${overrideVal.toFixed(2)}x (Custom)` : `${row.multiplier.toFixed(2)}x`}
+                                      {isOverridden ? `${Number(overrideVal).toFixed(2)}x (Custom)` : `${standardMultiplier.toFixed(2)}x`}
+                                    </td>
+                                    <td className="px-3 py-2 text-slate-600">{hours}</td>
+                                    <td className="px-3 py-2 font-semibold text-slate-700">{previewDays}</td>
+                                    <td className="px-3 py-2">
+                                      <span className={`font-semibold ${isOverridden ? 'text-amber-700' : 'text-slate-700'}`}>
+                                        {Number.isFinite(estimatedGoal) ? estimatedGoal.toFixed(2) : '-'}
+                                      </span>
                                     </td>
                                   </tr>
                                 )
                               });
                             })()}
                           </tbody>
+                          <tfoot className="bg-slate-50 border-t border-slate-200">
+                            <tr>
+                              <td colSpan={5} className="px-3 py-2 text-right font-semibold text-slate-700">Estimated Monthly Gross:</td>
+                              <td className="px-3 py-2 font-bold text-blue-700 text-base">
+                                RM {currentGrossTotal.toFixed(2)}
+                              </td>
+                            </tr>
+                          </tfoot>
                         </table>
                       </div>
                     </div>
@@ -1140,13 +1280,15 @@ export default function BranchManagement() {
                     </div>
                   </div>
                   <div className="flex justify-end gap-2">
-                    <button
-                      onClick={() => {
-                        setShowAddProject(false);
-                        setEditingProjectId(null);
-                        setNewProject({ name: '', payStructure: '8+3', status: 'Active' });
-                        setAssignedEmployeesToProject([]);
-                      }}
+                      <button
+                        onClick={() => {
+                          setShowAddProject(false);
+                          setEditingProjectId(null);
+                          setNewProject({ name: '', payStructure: '8+3', status: 'Active' });
+                          setCustomOtTotalDraft('');
+                          setIsEditingCustomOtTotal(false);
+                          setAssignedEmployeesToProject([]);
+                        }}
                       className="px-3 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-800"
                     >
                       Cancel
@@ -1159,7 +1301,8 @@ export default function BranchManagement() {
                     </button>
                   </div>
                 </div>
-              )}
+              );
+              })()}
 
               <div className="border border-slate-200 rounded-lg divide-y divide-slate-200">
                 {projects.filter(p => p.branchCode === managingBranch.code).map(proj => (
@@ -1307,24 +1450,65 @@ export default function BranchManagement() {
 
               {/* Employee List */}
               <div>
-                <h4 className="font-semibold text-slate-900 mb-3 text-sm md:text-base">Assigned Employees</h4>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+                  <h4 className="font-semibold text-slate-900 text-sm md:text-base">Assigned Employees</h4>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <div className="relative">
+                      <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        value={employeeSearchTerm}
+                        onChange={(e) => setEmployeeSearchTerm(e.target.value)}
+                        placeholder="Search employee..."
+                        className="w-full sm:w-56 pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <select
+                      value={employeeSortBy}
+                      onChange={(e) => setEmployeeSortBy(e.target.value as 'name' | 'employeeNo' | 'position')}
+                      className="px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="name">Sort by Name</option>
+                      <option value="employeeNo">Sort by Employee No.</option>
+                      <option value="position">Sort by Position</option>
+                    </select>
+                  </div>
+                </div>
                 <div className="border border-slate-200 rounded-lg divide-y divide-slate-200">
-                  {getBranchStats(viewingBranch.code).employees.map(emp => (
-                    <div key={emp.id} className="p-3 flex items-center justify-between hover:bg-slate-50">
-                      <div>
-                        <p className="font-medium text-slate-900">{String(emp.fullName)}</p>
-                        <p className="text-sm text-slate-600">{String(emp.employeeNo)} • {String(emp.position)}</p>
+                  {(() => {
+                    const search = employeeSearchTerm.trim().toLowerCase();
+                    const branchEmployees = getBranchStats(viewingBranch.code).employees
+                      .filter(emp => !search ||
+                        String(emp.fullName).toLowerCase().includes(search) ||
+                        String(emp.employeeNo).toLowerCase().includes(search) ||
+                        String(emp.position || '').toLowerCase().includes(search)
+                      )
+                      .sort((a, b) => {
+                        if (employeeSortBy === 'employeeNo') return String(a.employeeNo || '').localeCompare(String(b.employeeNo || ''));
+                        if (employeeSortBy === 'position') return String(a.position || '').localeCompare(String(b.position || ''));
+                        return String(a.fullName || '').localeCompare(String(b.fullName || ''));
+                      });
+
+                    if (branchEmployees.length === 0) {
+                      return (
+                        <div className="p-6 text-center text-slate-500">
+                          No employees match this branch filter.
+                        </div>
+                      );
+                    }
+
+                    return branchEmployees.map(emp => (
+                      <div key={emp.id} className="p-3 flex items-center justify-between hover:bg-slate-50">
+                        <div>
+                          <p className="font-medium text-slate-900">{String(emp.fullName)}</p>
+                          <p className="text-sm text-slate-600">{String(emp.employeeNo)} • {String(emp.position)}</p>
+                        </div>
+                        <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">
+                          {String(emp.status)}
+                        </span>
                       </div>
-                      <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">
-                        {String(emp.status)}
-                      </span>
-                    </div>
-                  ))}
-                  {getBranchStats(viewingBranch.code).employees.length === 0 && (
-                    <div className="p-6 text-center text-slate-500">
-                      No employees assigned to this branch
-                    </div>
-                  )}
+                    ));
+                  })()}
                 </div>
               </div>
 
