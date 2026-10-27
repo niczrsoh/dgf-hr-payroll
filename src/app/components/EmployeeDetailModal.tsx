@@ -165,7 +165,7 @@ export default function EmployeeDetailModal({ employee, onClose }: EmployeeDetai
               <div class="section-title">Banking Information</div>
               <div class="info-grid">
                 <div class="info-item">
-                  <div class="info-label">Bank Name</div>
+                  <div class="info-label">Bank</div>
                   <div class="info-value">${employee.bankName}</div>
                 </div>
                 <div class="info-item">
@@ -183,7 +183,7 @@ export default function EmployeeDetailModal({ employee, onClose }: EmployeeDetai
                   <div class="info-value">${employee.epfNumber}</div>
                 </div>
                 <div class="info-item">
-                  <div class="info-label">SOCSO Number</div>
+                  <div class="info-label">PERKESO Number</div>
                   <div class="info-value">${employee.socsoNumber}</div>
                 </div>
               </div>
@@ -238,6 +238,9 @@ export default function EmployeeDetailModal({ employee, onClose }: EmployeeDetai
               <p className="text-xs sm:text-sm text-slate-600 mb-1">IC Number</p>
               <p className="text-sm sm:text-base font-medium text-slate-900">{employee.icNumber}</p>
             </div>
+            <div><p className="text-xs sm:text-sm text-slate-600 mb-1">Nationality</p><p className="text-sm sm:text-base font-medium text-slate-900">{employee.nationality || '-'}</p></div>
+            <div><p className="text-xs sm:text-sm text-slate-600 mb-1">Date of Join</p><p className="text-sm sm:text-base font-medium text-slate-900">{employee.dateOfJoin || '-'}</p></div>
+            <div><p className="text-xs sm:text-sm text-slate-600 mb-1">Gender</p><p className="text-sm sm:text-base font-medium text-slate-900">{employee.gender || '-'}</p></div>
             <div>
               <p className="text-xs sm:text-sm text-slate-600 mb-1">Position</p>
               <p className="text-sm sm:text-base font-medium text-slate-900">{employee.position}</p>
@@ -254,8 +257,14 @@ export default function EmployeeDetailModal({ employee, onClose }: EmployeeDetai
               <p className="text-xs sm:text-sm text-slate-600 mb-1">Basic Salary</p>
               <p className="text-sm sm:text-base font-medium text-slate-900">RM {employee.basicSalary.toFixed(2)}</p>
             </div>
+            <div><p className="text-xs sm:text-sm text-slate-600 mb-1">Telephone No.</p><p className="text-sm sm:text-base font-medium text-slate-900">{employee.telephoneNumber || '-'}</p></div>
+            <div className="sm:col-span-2"><p className="text-xs sm:text-sm text-slate-600 mb-1">Address</p><p className="text-sm sm:text-base font-medium text-slate-900">{employee.residentialAddress || '-'}</p></div>
+            <div><p className="text-xs sm:text-sm text-slate-600 mb-1">Shift</p><p className="text-sm sm:text-base font-medium text-slate-900">{employee.workShift || '-'}</p></div>
+            <div><p className="text-xs sm:text-sm text-slate-600 mb-1">OT</p><p className="text-sm sm:text-base font-medium text-slate-900">{employee.otShift || '-'}</p></div>
+            <div><p className="text-xs sm:text-sm text-slate-600 mb-1">Offday</p><p className="text-sm sm:text-base font-medium text-slate-900">{employee.offDay || '-'}</p></div>
+            <div><p className="text-xs sm:text-sm text-slate-600 mb-1">Normal OT Pay</p><p className="text-sm sm:text-base font-medium text-slate-900">{employee.normalOtMonthlyTarget == null || Number.isNaN(Number(employee.normalOtMonthlyTarget)) ? '-' : `RM ${Number(employee.normalOtMonthlyTarget).toFixed(2)}`}</p></div>
             <div>
-              <p className="text-xs sm:text-sm text-slate-600 mb-1">Bank Name</p>
+              <p className="text-xs sm:text-sm text-slate-600 mb-1">Bank</p>
               <p className="text-sm sm:text-base font-medium text-slate-900">{employee.bankName}</p>
             </div>
             <div>
@@ -267,7 +276,7 @@ export default function EmployeeDetailModal({ employee, onClose }: EmployeeDetai
               <p className="text-sm sm:text-base font-medium text-slate-900">{employee.epfNumber}</p>
             </div>
             <div>
-              <p className="text-xs sm:text-sm text-slate-600 mb-1">SOCSO Number</p>
+              <p className="text-xs sm:text-sm text-slate-600 mb-1">PERKESO Number</p>
               <p className="text-sm sm:text-base font-medium text-slate-900">{employee.socsoNumber}</p>
             </div>
             <div>

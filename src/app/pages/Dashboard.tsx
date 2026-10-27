@@ -1,12 +1,23 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { usePayroll } from '../context/PayrollContext';
 import { Users, Building2, Calculator, Wallet, CheckCircle, DollarSign, TrendingUp, TrendingDown, Calendar, ArrowRight, FileText, Clock } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { useNavigate } from 'react-router-dom';
 
 export default function Dashboard() {
-  const { employees, branches, advances, payrolls } = usePayroll();
+  const { employees, branches, advances, payrolls, attendance } = usePayroll();
   const navigate = useNavigate();
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 60000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const latestDataMonth = [...payrolls.map(p => p.month), ...advances.map(a => a.month), ...attendance.map(a => a.month)].sort().pop() || currentMonth;
+  const formatMonth = (month: string) => new Date(`${month}-01T00:00:00`).toLocaleDateString('en-MY', { month: 'long', year: 'numeric' });
+  const formatDateTime = now.toLocaleString('en-MY', { dateStyle: 'full', timeStyle: 'short' });
 
   const activeEmployees = employees.filter(emp => emp.status === 'Active' && !emp.archivedDate).length;
   const activeBranches = branches.filter(b => b.status === 'Active').length;
@@ -20,13 +31,12 @@ export default function Dashboard() {
 
   // Calculate monthly totals from actual payroll data
   const monthlyData = useMemo(() => {
-    const months = [
-      { id: 'jan-2026', month: 'Jan', code: '2026-01' },
-      { id: 'feb-2026', month: 'Feb', code: '2026-02' },
-      { id: 'mar-2026', month: 'Mar', code: '2026-03' },
-      { id: 'apr-2026', month: 'Apr', code: '2026-04' },
-      { id: 'may-2026', month: 'May', code: '2026-05' },
-    ];
+    const [year, month] = latestDataMonth.split('-').map(Number);
+    const months = Array.from({ length: 6 }, (_, index) => {
+      const date = new Date(year, month - 1 - (5 - index), 1);
+      const code = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      return { id: code, month: date.toLocaleDateString('en-MY', { month: 'short' }), code };
+    });
 
     return months.map((m) => {
       const monthPayrolls = payrolls.filter(p => p.month === m.code);
@@ -41,22 +51,34 @@ export default function Dashboard() {
         advance: advance || 0,
       };
     });
-  }, [payrolls, advances]);
+  }, [payrolls, advances, latestDataMonth]);
 
-  const attendanceData = useMemo(() => [
-    { id: 'full', name: 'Full Attendance', value: 3, color: '#22c55e' },
-    { id: 'partial', name: 'Partial', value: 2, color: '#f59e0b' },
-    { id: 'low', name: 'Low', value: 1, color: '#ef4444' },
-  ], []);
+  const attendanceData = useMemo(() => {
+    const monthAttendance = attendance.filter(record => record.month === latestDataMonth);
+    const full = monthAttendance.filter(record => record.attendanceDays >= 26).length;
+    const partial = monthAttendance.filter(record => record.attendanceDays > 0 && record.attendanceDays < 26).length;
+    const low = monthAttendance.filter(record => record.attendanceDays === 0).length;
+    return [
+      { id: 'full', name: 'Full Attendance', value: full, color: '#22c55e' },
+      { id: 'partial', name: 'Partial', value: partial, color: '#f59e0b' },
+      { id: 'low', name: 'Low', value: low, color: '#ef4444' },
+    ].filter(item => item.value > 0);
+  }, [attendance, latestDataMonth]);
 
-  const recentActivities = [
-    { action: 'Payroll finalized for April 2026 - All 6 employees', time: '2 hours ago', type: 'payroll', user: 'Payroll Admin' },
-    { action: 'Advance payment processed - 5 employees (RM2,050.00)', time: '5 hours ago', type: 'advance', user: 'Payroll Admin' },
-    { action: 'Payslip generated for April 2026 - 6 employees', time: '1 day ago', type: 'payslip', user: 'Payroll Admin' },
-    { action: 'Attendance recorded for April 2026 - All employees', time: '2 days ago', type: 'attendance', user: 'Payroll Admin' },
-    { action: 'Advance approved for April 2026 - Muhammad Akmal (RM400)', time: '3 days ago', type: 'advance', user: 'Payroll Admin' },
-    { action: 'Employee profile updated - Ahmad Danish', time: '4 days ago', type: 'employee', user: 'HR Manager' },
-  ];
+  const recentActivities = useMemo(() => {
+    const activities = [] as { action: string; time: string; type: string; user: string }[];
+    const latestPayroll = payrolls.reduce((latest, payroll) => !latest || payroll.month > latest.month ? payroll : latest, undefined as typeof payrolls[number] | undefined);
+    if (latestPayroll) {
+      const count = payrolls.filter(payroll => payroll.month === latestPayroll.month).length;
+      activities.push({ action: `Payroll ${latestPayroll.status.toLowerCase()} for ${count} employee(s) - ${formatMonth(latestPayroll.month)}`, time: `Data month: ${formatMonth(latestPayroll.month)}`, type: 'payroll', user: 'Payroll System' });
+    }
+    const approvedAdvances = advances.filter(advance => advance.status === 'Approved');
+    if (approvedAdvances.length) activities.push({ action: `${approvedAdvances.length} advance payment(s) approved - RM ${approvedAdvances.reduce((sum, advance) => sum + advance.amount, 0).toFixed(2)}`, time: `Data month: ${formatMonth(approvedAdvances.map(advance => advance.month).sort().pop() || latestDataMonth)}`, type: 'advance', user: 'Payroll System' });
+    const monthAttendance = attendance.filter(record => record.month === latestDataMonth);
+    if (monthAttendance.length) activities.push({ action: `Attendance records available for ${monthAttendance.length} employee(s)`, time: `Data month: ${formatMonth(latestDataMonth)}`, type: 'attendance', user: 'Attendance Records' });
+    if (employees.length) activities.push({ action: `${employees.length} employee record(s) loaded from the database`, time: `Checked ${formatDateTime}`, type: 'employee', user: 'Employee Records' });
+    return activities;
+  }, [advances, attendance, employees.length, formatDateTime, latestDataMonth, payrolls]);
 
   const stats = [
     {
@@ -64,7 +86,7 @@ export default function Dashboard() {
       value: activeEmployees,
       icon: Users,
       color: 'bg-blue-500',
-      change: '+2',
+      change: `${activeEmployees} active`,
       changeType: 'up',
     },
     {
@@ -72,7 +94,7 @@ export default function Dashboard() {
       value: activeBranches,
       icon: Building2,
       color: 'bg-green-500',
-      change: '0',
+      change: `${branches.length} total`,
       changeType: 'neutral',
     },
     {
@@ -80,7 +102,7 @@ export default function Dashboard() {
       value: pendingPayroll,
       icon: Calculator,
       color: 'bg-orange-500',
-      change: '-3',
+      change: `${payrolls.length} total`,
       changeType: 'down',
     },
     {
@@ -88,7 +110,7 @@ export default function Dashboard() {
       value: advanceReady,
       icon: Wallet,
       color: 'bg-purple-500',
-      change: '+5',
+      change: `${advances.length} total`,
       changeType: 'up',
     },
     {
@@ -96,7 +118,7 @@ export default function Dashboard() {
       value: payrollFinalized,
       icon: CheckCircle,
       color: 'bg-teal-500',
-      change: '+7',
+      change: `${payrolls.filter(p => p.status === 'Paid').length} paid`,
       changeType: 'up',
     },
     {
@@ -104,7 +126,7 @@ export default function Dashboard() {
       value: `RM ${totalNetSalary.toFixed(2)}`,
       icon: DollarSign,
       color: 'bg-indigo-500',
-      change: '+4.2%',
+      change: `${payrolls.length} record(s)`,
       changeType: 'up',
     },
   ];
@@ -113,7 +135,7 @@ export default function Dashboard() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
-        <p className="text-slate-600 mt-1">Payroll Management Overview - April 2026</p>
+        <p className="text-slate-600 mt-1">Payroll Management Overview - {formatDateTime}</p>
       </div>
 
       {/* Payroll Cycle Status */}
@@ -124,8 +146,8 @@ export default function Dashboard() {
               <Clock className="w-5 h-5" />
               <h3 className="font-semibold">Current Payroll Cycle</h3>
             </div>
-            <p className="text-2xl font-bold mb-1">April 2026</p>
-            <p className="text-blue-100 text-sm">Salary Payment: 7th May 2026 • Advance: 20th April 2026</p>
+            <p className="text-2xl font-bold mb-1">{formatMonth(latestDataMonth)}</p>
+            <p className="text-blue-100 text-sm">Live data from employees, attendance, advances, and payroll records</p>
           </div>
           <div className="text-right">
             <div className="bg-white/20 backdrop-blur-sm px-4 py-2 rounded-lg">
@@ -177,25 +199,22 @@ export default function Dashboard() {
             <h3 className="font-semibold text-slate-900">Payroll Timeline</h3>
           </div>
           <div className="space-y-3">
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-slate-600">Attendance Period</span>
-              <span className="text-sm font-medium text-slate-900">1st - 10th</span>
-            </div>
+            <div className="flex justify-between items-center"><span className="text-sm text-slate-600">Data Month</span><span className="text-sm font-medium text-slate-900">{formatMonth(latestDataMonth)}</span></div>
             <div className="flex justify-between items-center">
               <span className="text-sm text-slate-600">Advance Payment</span>
-              <span className="text-sm font-medium text-blue-600">20th April</span>
+              <span className="text-sm font-medium text-blue-600">{advances.length} record(s)</span>
             </div>
             <div className="flex justify-between items-center">
               <span className="text-sm text-slate-600">Salary Payment</span>
-              <span className="text-sm font-medium text-green-600">7th May</span>
+              <span className="text-sm font-medium text-green-600">{payrolls.length} record(s)</span>
             </div>
           </div>
         </div>
 
         <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg shadow p-6 text-white">
           <h3 className="font-semibold mb-2">Upcoming Salary Date</h3>
-          <p className="text-3xl font-bold mb-1">7th May 2026</p>
-          <p className="text-blue-100 text-sm">For April 2026 Payroll</p>
+          <p className="text-3xl font-bold mb-1">{formatMonth(latestDataMonth)}</p>
+          <p className="text-blue-100 text-sm">Latest payroll data</p>
           <div className="mt-4 pt-4 border-t border-blue-400">
             <p className="text-sm">Total Net Salary: RM {totalNetSalary.toFixed(2)}</p>
           </div>
@@ -203,8 +222,8 @@ export default function Dashboard() {
 
         <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg shadow p-6 text-white">
           <h3 className="font-semibold mb-2">Advance Payment Date</h3>
-          <p className="text-3xl font-bold mb-1">20th April 2026</p>
-          <p className="text-purple-100 text-sm">April 2026 Cycle</p>
+          <p className="text-3xl font-bold mb-1">{formatMonth(latestDataMonth)}</p>
+          <p className="text-purple-100 text-sm">Latest advance data</p>
           <div className="mt-4 pt-4 border-t border-purple-400">
             <p className="text-sm">Estimated Total: RM {totalAdvance.toFixed(2)}</p>
           </div>

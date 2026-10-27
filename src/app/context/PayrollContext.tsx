@@ -48,6 +48,16 @@ export interface Employee {
   status: 'Active' | 'Inactive';
   createdDate?: string; // Date when employee was added to system (YYYY-MM-DD)
   archivedDate?: string; // Date when employee was archived/deleted (YYYY-MM-DD)
+  nationality?: string;
+  stateCode?: string;
+  dateOfJoin?: string;
+  gender?: string;
+  telephoneNumber?: string;
+  residentialAddress?: string;
+  normalOtMonthlyTarget?: number;
+  workShift?: string;
+  otShift?: string;
+  offDay?: string;
 }
 
 export interface Attendance {
@@ -1069,7 +1079,7 @@ export const PayrollProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     // Add to state immediately (optimistic update)
     setEmployees(prevEmployees => {
-      const updated = [...prevEmployees, employeeWithDate];
+      const updated = [employeeWithDate, ...prevEmployees];
       // Save to localStorage as backup
       localStorage.setItem('payroll_employees', JSON.stringify(updated));
       return updated;

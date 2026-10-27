@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import ConfirmDialog from '../components/ConfirmDialog';
 import EmployeeForm from '../components/EmployeeForm';
 import EmployeeDetailModal from '../components/EmployeeDetailModal';
+import * as XLSX from 'xlsx';
 
 export default function EmployeeManagement() {
   const { employees, branches, projects, addEmployee, updateEmployee, deleteEmployee, archiveEmployee, addBranch, updateBranch, deleteBranch } = usePayroll();
@@ -22,6 +23,7 @@ export default function EmployeeManagement() {
   const [deleteConfirm, setDeleteConfirm] = useState<Employee | null>(null);
   const [activateConfirm, setActivateConfirm] = useState(false);
   const [bulkDeactivateConfirm, setBulkDeactivateConfirm] = useState(false);
+  const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [showAssignBranchModal, setShowAssignBranchModal] = useState(false);
   const [selectedBranchForAssign, setSelectedBranchForAssign] = useState('PPU-SA');
@@ -214,6 +216,21 @@ export default function EmployeeManagement() {
     setSelectedEmployees(new Set());
   };
 
+  const handleBulkDelete = () => {
+    if (selectedEmployees.size === 0) {
+      toast.error('Please select employees.');
+      return;
+    }
+    setBulkDeleteConfirm(true);
+  };
+
+  const confirmBulkDelete = () => {
+    selectedEmployees.forEach(empId => deleteEmployee(empId));
+    toast.success(`${selectedEmployees.size} employee(s) deleted permanently.`);
+    setBulkDeleteConfirm(false);
+    setSelectedEmployees(new Set());
+  };
+
   const handleSaveEmployee = (employeeData: Partial<Employee>) => {
     if (editingEmployee) {
       updateEmployee(editingEmployee.id, employeeData);
@@ -343,6 +360,7 @@ export default function EmployeeManagement() {
 
   const handleAssignBranch = (employee: Employee) => {
     setSelectedEmployees(new Set([employee.id]));
+    setSelectedBranchForAssign(employee.branchCode || branches.find(b => b.status === 'Active')?.code || '');
     setShowAssignBranchModal(true);
   };
 
@@ -385,83 +403,64 @@ export default function EmployeeManagement() {
     setShowImportModal(true);
   };
 
+  const downloadSampleTemplate = () => {
+    const headers = ['Full Name', 'IC/Passport Number', 'Position', 'Nationality', 'Date of Join', 'Gender', 'Branch Code', 'Branch', 'Bank', 'Account Number', 'Telephone No.', 'Address', 'Basic Salary', 'Normal OT Pay', 'EPF Number', 'PERKESO Number', 'Shift', 'OT', 'Offday', 'Employment Status'];
+    const sample = ['Sample Employee', '900101-01-1234', 'Static Guard', 'Malaysian', '2026-10-01', 'Male', 'PPU-SA', 'PPU IKS Simpang Ampat', 'MBB', '1234567890', '012-3456789', 'Sample address', 1700, 1200, 'EP123456', 'SO123456', '07:00-15:00', '15:00-19:00', 'Sunday', 'Active'];
+    const notes = ['Mandatory: Full Name, Position, Branch Code, Branch, Basic Salary, and Employment Status.', 'Employee Number is generated automatically from position, nationality, and the branch running sequence.', 'Employment Status must be Active or Inactive. Salary must be numeric. Keep account and statutory numbers as text.'];
+    const sheet = XLSX.utils.aoa_to_sheet([headers, sample, [], ['Instructions'], ...notes.map(note => [note])]);
+    sheet['!cols'] = headers.map((header, index) => ({ wch: index === 1 || index === 5 ? 25 : 18 }));
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, sheet, 'Employees');
+    XLSX.writeFile(workbook, 'employee-import-template.xlsx');
+  };
+
   const handleImportFile = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-
     const reader = new FileReader();
     reader.onload = (e) => {
-      const content = e.target?.result as string;
-      const lines = content.split('\n');
-      let imported = 0;
-
-      // Skip header row
-      for (let i = 1; i < lines.length; i++) {
-        const line = lines[i].trim();
-        if (!line) continue;
-
-        // Parse CSV handling quoted fields
-        const columns: string[] = [];
-        let currentField = '';
-        let inQuotes = false;
-
-        for (let j = 0; j < line.length; j++) {
-          const char = line[j];
-
-          if (char === '"') {
-            inQuotes = !inQuotes;
-          } else if (char === ',' && !inQuotes) {
-            columns.push(currentField.trim());
-            currentField = '';
-          } else {
-            currentField += char;
-          }
+      try {
+        const workbook = XLSX.read(e.target?.result, { type: 'array', cellText: true, cellDates: false });
+        const rows = XLSX.utils.sheet_to_json<string[]>(workbook.Sheets[workbook.SheetNames[0]], { header: 1, defval: '' });
+        const requiredHeaders = ['Full Name', 'IC/Passport Number', 'Position', 'Nationality', 'Date of Join', 'Gender', 'Branch Code', 'Branch', 'Bank', 'Account Number', 'Telephone No.', 'Address', 'Basic Salary', 'Normal OT Pay', 'EPF Number', 'PERKESO Number', 'Shift', 'OT', 'Offday', 'Employment Status'];
+        const headers = (rows[0] || []).map(value => String(value).trim());
+        if (requiredHeaders.some((header, index) => headers[index] !== header)) {
+          toast.error(`Invalid template. Expected columns: ${requiredHeaders.join(', ')}`);
+          return;
         }
-        columns.push(currentField.trim()); // Add last field
-
-        const [
-          employeeNo,
-          fullName,
-          icNumber,
-          position,
-          branchCode,
-          branch,
-          basicSalary,
-          bankName,
-          accountNumber,
-          epfNumber,
-          socsoNumber,
-          status
-        ] = columns;
-
-        if (employeeNo && fullName) {
-          // Find the branch to get its name if branchCode is provided
+        let imported = 0;
+        const importedEmployees: Employee[] = [];
+        const errors: string[] = [];
+        rows.slice(1).forEach((columns, index) => {
+          if (!columns.some(value => String(value).trim())) return;
+          const [fullName, icNumber, position, nationality, dateOfJoin, gender, branchCode, branch, bankName, accountNumber, telephoneNumber, residentialAddress, basicSalary, normalOtMonthlyTarget, epfNumber, socsoNumber, workShift, otShift, offDay, status] = columns.map(value => String(value).trim());
           const foundBranch = branches.find(b => b.code === branchCode);
-
-          const newEmployee: Employee = {
-            id: crypto.randomUUID(),
-            employeeNo: employeeNo,
-            fullName: fullName,
-            icNumber: icNumber || '',
-            position: position || 'Security Guard',
-            branchCode: branchCode || 'PPU-SA',
-            branch: branch || foundBranch?.name || 'PPU IKS Simpang Ampat',
-            basicSalary: parseFloat(basicSalary) || 2000,
-            bankName: bankName || 'MAYBANK',
-            accountNumber: accountNumber || '',
-            epfNumber: epfNumber || '',
-            socsoNumber: socsoNumber || '',
-            status: (status as 'Active' | 'Inactive') || 'Active',
-          };
+          if (!fullName || !position || !branchCode || !branch || !basicSalary || !status) {
+            errors.push(`Row ${index + 2}: missing mandatory data`);
+            return;
+          }
+          if (!foundBranch || !['Active', 'Inactive'].includes(status) || Number.isNaN(Number(basicSalary))) {
+            errors.push(`Row ${index + 2}: invalid branch, salary, or status`);
+            return;
+          }
+          const guardCode = position === 'Head Guard' ? 'HG' : position === 'Mobile Guard' ? 'MG' : position === 'Supervisor' ? 'SV' : 'SG';
+          const nationalityCode = nationality.toLowerCase() === 'malaysian' ? 'M' : 'I';
+          const prefix = `${guardCode}${nationalityCode}`;
+          const sequence = Math.max(0, ...employees.filter(emp => emp.branchCode === branchCode && emp.employeeNo?.startsWith(prefix)).map(emp => Number(emp.employeeNo.slice(3)) || 0), ...importedEmployees.filter(emp => emp.branchCode === branchCode && emp.employeeNo.startsWith(prefix)).map(emp => Number(emp.employeeNo.slice(3)) || 0)) + 1;
+          const newEmployee: Employee = { id: crypto.randomUUID(), employeeNo: `${prefix}${String(sequence).padStart(3, '0')}`, fullName, icNumber, position, nationality, dateOfJoin, gender, branchCode, branch, basicSalary: Number(basicSalary), bankName, accountNumber, telephoneNumber, residentialAddress, normalOtMonthlyTarget: normalOtMonthlyTarget ? Number(normalOtMonthlyTarget) : undefined, epfNumber, socsoNumber, workShift, otShift, offDay, status: status as 'Active' | 'Inactive' };
+          importedEmployees.push(newEmployee);
           addEmployee(newEmployee);
           imported++;
-        }
+        });
+        if (imported) toast.success(`Successfully imported ${imported} employee(s).`);
+        if (errors.length) toast.error(`${errors.length} row(s) were skipped. ${errors[0]}`);
+        if (imported) setShowImportModal(false);
+      } catch {
+        toast.error('Unable to read this file. Please use the sample template.');
       }
-
-      toast.success(`Successfully imported ${imported} employee(s).`);
-      setShowImportModal(false);
     };
-    reader.readAsText(file);
+    reader.readAsArrayBuffer(file);
+    event.target.value = '';
   };
 
   const handleExportSelected = () => {
@@ -616,12 +615,28 @@ export default function EmployeeManagement() {
                     Print Employees
                   </button>
                   <button
+                    onClick={handleBulkImport}
+                    className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
+                  >
+                    <Upload className="w-4 h-4 inline mr-1" />
+                    Import Employees
+                  </button>
+                  <button
                     onClick={handleAddEmployee}
                     className="px-3 py-2 bg-blue-900 text-white rounded-lg hover:bg-blue-800 text-sm"
                   >
                     <Plus className="w-4 h-4 inline mr-1" />
                     Add Employees
                   </button>
+                  {selectedEmployees.size > 0 && (
+                    <button
+                      onClick={handleBulkDelete}
+                      className="px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm"
+                    >
+                      <Trash className="w-4 h-4 inline mr-1" />
+                      Delete Selected ({selectedEmployees.size})
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -689,13 +704,6 @@ export default function EmployeeManagement() {
                 </select>
 
                 <div className="flex items-center gap-2">
-                  <button
-                    onClick={handleBulkImport}
-                    className="flex-1 px-3 py-2 border border-slate-300 rounded-lg hover:bg-slate-50 text-sm"
-                  >
-                    <Upload className="w-4 h-4 inline mr-1" />
-                    Import
-                  </button>
                   <button
                     onClick={handleExportSelected}
                     className="flex-1 px-3 py-2 border border-slate-300 rounded-lg hover:bg-slate-50 text-sm"
@@ -947,6 +955,7 @@ export default function EmployeeManagement() {
           employee={editingEmployee}
           branches={branches}
           projects={projects}
+          employees={employees}
           onSave={handleSaveEmployee}
           onCancel={() => {
             setShowForm(false);
@@ -1040,6 +1049,18 @@ export default function EmployeeManagement() {
         />
       )}
 
+      {bulkDeleteConfirm && (
+        <ConfirmDialog
+          title="Delete Selected Employees"
+          message={`Are you sure you want to permanently delete ${selectedEmployees.size} selected employee${selectedEmployees.size > 1 ? 's' : ''}?`}
+          warningBox="WARNING: This action cannot be undone. The selected employees and their related records may be permanently deleted."
+          onConfirm={confirmBulkDelete}
+          onCancel={() => setBulkDeleteConfirm(false)}
+          confirmText="Yes, Delete Permanently"
+          confirmStyle="danger"
+        />
+      )}
+
       {/* Import Employees Modal */}
       {showImportModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -1049,11 +1070,17 @@ export default function EmployeeManagement() {
               <p className="text-sm text-slate-600 mt-1">Upload Excel or CSV file to import multiple employees</p>
             </div>
             <div className="p-6">
+              <div className="flex justify-end mb-4">
+                <button onClick={downloadSampleTemplate} className="px-3 py-2 border border-blue-300 text-blue-700 rounded-lg hover:bg-blue-50 text-sm">
+                  <Download className="w-4 h-4 inline mr-1" />
+                  Download Sample Template
+                </button>
+              </div>
               <div className="border-2 border-dashed border-slate-300 rounded-lg p-8 text-center">
                 <Upload className="w-12 h-12 mx-auto mb-4 text-slate-400" />
                 <h4 className="text-sm font-medium text-slate-900 mb-2">Upload Employee Data</h4>
                 <p className="text-xs text-slate-600 mb-4">
-                  CSV format: Employee No, Full Name, IC Number, Position, Branch Code, Branch, Basic Salary, Bank Name, Account Number, EPF Number, SOCSO Number, Status
+                  Required columns: Full Name, IC/Passport Number, Position, Nationality, Date of Join, Gender, Branch Code, Branch, Bank, Account Number, Telephone No., Address, Basic Salary, Normal OT Pay, EPF Number, PERKESO Number, Shift, OT, Offday, Employment Status. Employee Number is generated automatically.
                 </p>
                 <label className="inline-block px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 cursor-pointer">
                   <input
@@ -1067,13 +1094,13 @@ export default function EmployeeManagement() {
                 <p className="text-xs text-slate-500 mt-3">Supported: CSV, Excel (.xlsx, .xls)</p>
               </div>
               <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <h5 className="text-sm font-semibold text-blue-900 mb-2">CSV Format Example:</h5>
+                <h5 className="text-sm font-semibold text-blue-900 mb-2">Import Format</h5>
                 <code className="text-xs text-blue-800 block whitespace-pre-wrap break-all">
-                  EMP001,John Doe,900101011234,Security Guard,PPU-SA,PPU IKS Simpang Ampat,2000,MAYBANK,1234567890,EP123456,SO123456,Active<br />
-                  EMP002,Jane Smith,910202022345,Static Guard,PPU-BK,PPU HalalHub Batu Kawan,2200,CIMB,0987654321,EP234567,SO234567,Active
+                  John Doe,900101011234,Static Guard,Malaysian,2026-10-01,Male,PPU-SA,PPU IKS Simpang Ampat,MBB,1234567890,012-3456789,Sample address,2000,1200,EP123456,SO123456,07:00-15:00,15:00-19:00,Sunday,Active<br />
+                  Jane Smith,910202022345,Static Guard,Malaysian,2026-10-01,Female,PPU-BK,PPU HalalHub Batu Kawan,CIMB,0987654321,013-4567890,Sample address,2200,1200,EP234567,SO234567,07:00-15:00,15:00-19:00,Monday,Active
                 </code>
                 <p className="text-xs text-blue-700 mt-2">
-                  Column order: Employee No, Full Name, IC Number, Position, Branch Code, Branch, Basic Salary, Bank Name, Account Number, EPF Number, SOCSO Number, Status
+                  Column order: Full Name, IC/Passport Number, Position, Nationality, Date of Join, Gender, Branch Code, Branch, Bank, Account Number, Telephone No., Address, Basic Salary, Normal OT Pay, EPF Number, PERKESO Number, Shift, OT, Offday, Employment Status. Salary must be numeric and status must be Active or Inactive.
                 </p>
               </div>
             </div>

@@ -4,6 +4,7 @@ import { usePayroll, Branch, Project } from '../context/PayrollContext';
 import { toast } from 'sonner';
 import ConfirmDialog from '../components/ConfirmDialog';
 import * as db from '../../lib/database';
+import * as XLSX from 'xlsx';
 
 export const MALAYSIAN_STATES = [
   'Johor', 'Kedah', 'Kelantan', 'Melaka', 'Negeri Sembilan', 
@@ -56,6 +57,29 @@ export default function BranchManagement() {
   const [branchSortBy, setBranchSortBy] = useState<'name' | 'code' | 'location' | 'staff'>('name');
   const [employeeSearchTerm, setEmployeeSearchTerm] = useState('');
   const [employeeSortBy, setEmployeeSortBy] = useState<'name' | 'employeeNo' | 'position'>('name');
+  const [cityOptions, setCityOptions] = useState<Array<{ city: string; state: string }>>([]);
+
+  useEffect(() => {
+    fetch('/my_cities.xlsx')
+      .then(response => response.arrayBuffer())
+      .then(buffer => {
+        const workbook = XLSX.read(buffer, { type: 'array' });
+        const rows = XLSX.utils.sheet_to_json<any[]>(workbook.Sheets[workbook.SheetNames[0]], { header: 1, defval: '' });
+        const options = rows.slice(1)
+          .filter(row => String(row[3]).toLowerCase() === 'malaysia' && row[0] && row[5])
+          .map(row => ({ city: String(row[0]).trim(), state: String(row[5]).trim() }))
+          .filter((option, index, all) => all.findIndex(item => item.city.toLowerCase() === option.city.toLowerCase()) === index)
+          .sort((a, b) => a.city.localeCompare(b.city));
+        setCityOptions(options);
+      })
+      .catch(() => setCityOptions([]));
+  }, []);
+
+  const updateBranchLocation = (location: string, setter: (value: any) => void, current: Branch) => {
+    const selectedCity = cityOptions.find(option => option.city.toLowerCase() === location.trim().toLowerCase());
+    setter({ ...current, location, state: selectedCity?.state || current.state || '' });
+  };
+  const cityStates = Array.from(new Set(cityOptions.map(option => option.state))).sort();
 
   const [newBranch, setNewBranch] = useState<Branch>({
     code: '',
@@ -843,10 +867,15 @@ export default function BranchManagement() {
                   <input
                     type="text"
                     value={newBranch.location}
-                    onChange={(e) => setNewBranch({ ...newBranch, location: e.target.value })}
+                    onChange={(e) => updateBranchLocation(e.target.value, setNewBranch, newBranch)}
+                    list="branch-city-options"
                     className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="City/State"
+                    placeholder="Search and select city"
                   />
+                  <datalist id="branch-city-options">{cityOptions.map(option => <option key={`${option.city}-${option.state}`} value={option.city}>{option.state}</option>)}</datalist>
+                  <select value={newBranch.state || ''} onChange={(e) => setNewBranch({ ...newBranch, state: e.target.value })} className="w-full mt-2 px-4 py-2 border border-slate-300 rounded-lg">
+                    <option value="">Select State</option>{cityStates.map(state => <option key={state} value={state}>{state}</option>)}
+                  </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">Contact Person</label>
@@ -965,9 +994,13 @@ export default function BranchManagement() {
                   <input
                     type="text"
                     value={editingBranch.location}
-                    onChange={(e) => setEditingBranch({ ...editingBranch, location: e.target.value })}
+                    onChange={(e) => updateBranchLocation(e.target.value, setEditingBranch, editingBranch)}
+                    list="branch-city-options"
                     className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
+                  <select value={editingBranch.state || ''} onChange={(e) => setEditingBranch({ ...editingBranch, state: e.target.value })} className="w-full mt-2 px-4 py-2 border border-slate-300 rounded-lg">
+                    <option value="">Select State</option>{cityStates.map(state => <option key={state} value={state}>{state}</option>)}
+                  </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">Contact Person</label>

@@ -14,7 +14,7 @@ export async function fetchEmployees(): Promise<Employee[]> {
   const { data, error } = await supabase
     .from('employees')
     .select('*')
-    .order('employee_no');
+    .order('created_at', { ascending: false });
 
   if (error) {
     console.error('Error fetching employees:', error);
@@ -38,6 +38,16 @@ export async function fetchEmployees(): Promise<Employee[]> {
     createdDate: emp.created_date || undefined,
     archivedDate: emp.archived_date || undefined,
     projectId: emp.project_id || undefined,
+    nationality: emp.nationality || '',
+    stateCode: emp.state_code || '',
+    dateOfJoin: emp.date_of_join || emp.created_date || undefined,
+    gender: emp.gender || '',
+    telephoneNumber: emp.telephone_number || '',
+    residentialAddress: emp.residential_address || '',
+    normalOtMonthlyTarget: emp.normal_ot_monthly_target == null ? undefined : Number(emp.normal_ot_monthly_target),
+    workShift: emp.work_shift || '',
+    otShift: emp.ot_shift || '',
+    offDay: emp.off_day || '',
   }));
 }
 
@@ -62,7 +72,17 @@ export async function createEmployee(employee: Employee): Promise<boolean> {
       status: employee.status,
       created_date: employee.createdDate || null,
       archived_date: employee.archivedDate || null,
-      project_id: employee.projectId || null
+      project_id: employee.projectId || null,
+      nationality: employee.nationality || null,
+      state_code: employee.stateCode || null,
+      date_of_join: employee.dateOfJoin || employee.createdDate || null,
+      gender: employee.gender || null,
+      telephone_number: employee.telephoneNumber || null,
+      residential_address: employee.residentialAddress || null,
+      normal_ot_monthly_target: employee.normalOtMonthlyTarget ?? null,
+      work_shift: employee.workShift || null,
+      ot_shift: employee.otShift || null,
+      off_day: employee.offDay || null
     });
 
   if (error) {
@@ -91,6 +111,16 @@ export async function updateEmployee(id: string, updates: Partial<Employee>): Pr
   if (updates.createdDate !== undefined) dbUpdates.created_date = updates.createdDate;
   if ('archivedDate' in updates) dbUpdates.archived_date = updates.archivedDate; // Allow null to clear the field
   if (updates.projectId !== undefined) dbUpdates.project_id = updates.projectId; // Allow mapping string or null
+  if (updates.nationality !== undefined) dbUpdates.nationality = updates.nationality;
+  if (updates.stateCode !== undefined) dbUpdates.state_code = updates.stateCode;
+  if (updates.dateOfJoin !== undefined) dbUpdates.date_of_join = updates.dateOfJoin;
+  if (updates.gender !== undefined) dbUpdates.gender = updates.gender;
+  if (updates.telephoneNumber !== undefined) dbUpdates.telephone_number = updates.telephoneNumber;
+  if (updates.residentialAddress !== undefined) dbUpdates.residential_address = updates.residentialAddress;
+  if (updates.normalOtMonthlyTarget !== undefined) dbUpdates.normal_ot_monthly_target = updates.normalOtMonthlyTarget;
+  if (updates.workShift !== undefined) dbUpdates.work_shift = updates.workShift;
+  if (updates.otShift !== undefined) dbUpdates.ot_shift = updates.otShift;
+  if (updates.offDay !== undefined) dbUpdates.off_day = updates.offDay;
 
   const { error } = await supabase
     .from('employees')
