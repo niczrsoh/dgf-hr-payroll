@@ -111,7 +111,7 @@ export default function EmployeeDetailModal({ employee, onClose }: EmployeeDetai
           </head>
           <body>
             <div class="header">
-              <div class="company-name">DYNAMIC GUARDFORCE SDN BHD</div>
+              <div class="company-name">JASA SERVICES &amp; TECHNOLOGY SDN BHD</div>
               <div class="document-title">Employee Profile Documentation</div>
             </div>
 

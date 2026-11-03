@@ -2,6 +2,11 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { getEPFContribution, getSOCSOContribution, getSIPContribution, getContributionSalary, getGrossContributionSalary } from '../utils/contributionTables';
 import * as db from '../../lib/database';
 
+const createLocalId = () => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  return `local-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+};
+
 export interface Branch {
   code: string;
   name: string;
@@ -89,6 +94,9 @@ export interface DailyAttendance {
   overrideLog?: string;
   duration?: number;
   hasOT?: boolean;
+  clockIn?: string;
+  clockOut?: string;
+  remarks?: string;
 }
 
 export interface AttendanceCycle {
@@ -1386,7 +1394,7 @@ export const PayrollProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const existingCycle = attendanceCycles.find(c => c.month === targetMonth && c.branch === 'ALL');
       if (!existingCycle) {
         const newCycle: AttendanceCycle = {
-          id: crypto.randomUUID(),
+          id: createLocalId(),
           month: targetMonth,
           branch: 'ALL',
           status: 'Draft',
@@ -1452,7 +1460,7 @@ export const PayrollProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const createAttendanceCycle = (cycleData: Omit<AttendanceCycle, 'id' | 'createdDate'>) => {
     const newCycle: AttendanceCycle = {
       ...cycleData,
-      id: crypto.randomUUID(),
+      id: createLocalId(),
       createdDate: new Date().toISOString().split('T')[0],
     };
 

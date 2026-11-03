@@ -254,7 +254,7 @@ export default function AdvancePayment() {
 </head>
 <body>
   <div class="header">
-    <div class="company">DYNAMIC GUARDFORCE SDN BHD</div>
+    <div class="company">JASA SERVICES &amp; TECHNOLOGY SDN BHD</div>
     <div style="font-size: 9pt; color: #333;">Advance Payment History Report</div>
   </div>
   <div class="title">ADVANCE PAYMENT HISTORY</div>

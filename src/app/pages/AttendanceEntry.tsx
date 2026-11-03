@@ -9,6 +9,7 @@ import CreateAttendanceCycleModal from '../components/CreateAttendanceCycleModal
 import AttendanceCycleList from '../components/AttendanceCycleList';
 import AttendancePreviewModal from '../components/AttendancePreviewModal';
 import CalendarAttendance from '../components/CalendarAttendance';
+import EmployeeTimesheet from '../components/EmployeeTimesheet';
 
 export default function AttendanceEntry() {
   const {
@@ -48,6 +49,7 @@ export default function AttendanceEntry() {
   const [previewEmployeeId, setPreviewEmployeeId] = useState<string | null>(null);
   const [modifiedEmployees, setModifiedEmployeesState] = useState<Set<string>>(new Set());
   const [showNavigationDialog, setShowNavigationDialog] = useState(false);
+  const [showTimesheet, setShowTimesheet] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const employeesPerPage = 10;
 
@@ -475,6 +477,13 @@ export default function AttendanceEntry() {
             <Calendar className="w-4 h-4" />
             Attendance Entry
           </button>
+          <button
+            onClick={() => setShowTimesheet(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-white text-blue-900 border border-blue-200 hover:bg-blue-50"
+          >
+            <List className="w-4 h-4" />
+            Employee Timesheet
+          </button>
           {/* <button
             onClick={() => setActiveView('history')}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
@@ -491,7 +500,7 @@ export default function AttendanceEntry() {
 
       {activeView === 'entry' ? (
         <>
-          <CalendarAttendance month={selectedMonth} onChangeMonth={setSelectedMonth} />
+            <CalendarAttendance month={selectedMonth} onChangeMonth={setSelectedMonth} selectedBranch={selectedBranch} />
         </>
       ) : (
         <div className="space-y-4">
@@ -548,6 +557,8 @@ export default function AttendanceEntry() {
           />
         </div>
       )}
+
+      {showTimesheet && <EmployeeTimesheet month={selectedMonth} branches={branches} onClose={() => setShowTimesheet(false)} />}
 
       {/* Edit Attendance Modal */}
       {editingEmployeeId && editingAttendance && (() => {
@@ -1184,7 +1195,7 @@ export default function AttendanceEntry() {
 
                   <div class="footer">
                     <p><strong>Generated:</strong> ${new Date().toLocaleDateString('en-MY', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
-                    <p style="margin-top: 8px;">Dynamic Guardforce Sdn Bhd</p>
+                    <p style="margin-top: 8px;">Jasa Services &amp; Technology Sdn Bhd</p>
                   </div>
                 </body>
               </html>
@@ -1381,7 +1392,7 @@ export default function AttendanceEntry() {
             pdf.text(`Generated: ${new Date().toLocaleDateString('en-MY', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`, 20, yPos);
 
             yPos += 5;
-            pdf.text('Dynamic Guardforce Sdn Bhd', 20, yPos);
+            pdf.text('Jasa Services & Technology Sdn Bhd', 20, yPos);
 
             pdf.save(`Attendance_${employee.employeeNo}_${selectedMonth}.pdf`);
 
@@ -1516,7 +1527,7 @@ export default function AttendanceEntry() {
               <div className="px-6 py-4 border-t-2 border-slate-900 bg-white flex items-center justify-between">
                 <div className="text-xs text-slate-600">
                   <p className="font-medium">Generated: {new Date().toLocaleDateString('en-MY', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
-                  <p className="mt-1">Dynamic Guardforce Sdn Bhd</p>
+                  <p className="mt-1">Jasa Services &amp; Technology Sdn Bhd</p>
                 </div>
                 <div className="flex items-center gap-3 print:hidden">
                   <button

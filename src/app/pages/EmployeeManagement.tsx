@@ -335,7 +335,7 @@ export default function EmployeeManagement() {
           <body>
             <div class="header">
               <h1>Employee Profile</h1>
-              <p>Dynamic Guardforce Sdn Bhd</p>
+              <p>Jasa Services &amp; Technology Sdn Bhd</p>
             </div>
             <div class="section">
               <div><span class="label">Employee No:</span><span class="value">${employee.employeeNo}</span></div>
@@ -1517,7 +1517,7 @@ export default function EmployeeManagement() {
                         </head>
                         <body>
                           <div class="header">
-                            <div class="company-name">DYNAMIC GUARDFORCE SDN BHD</div>
+                            <div class="company-name">JASA SERVICES &amp; TECHNOLOGY SDN BHD</div>
                             <div class="report-title">Employee Directory</div>
                             <div class="report-subtitle">Active Employees by Branch</div>
                           </div>

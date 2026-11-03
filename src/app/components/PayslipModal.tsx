@@ -105,7 +105,7 @@ export default function PayslipModal({ employee, payroll, attendance, branch, mo
             {/* Header */}
             <div style={{ border: '1px solid #000', padding: '6px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
-                <div style={{ fontWeight: 'bold', fontSize: '14px' }}>DYNAMIC GUARDFORCE SDN BHD</div>
+                <div style={{ fontWeight: 'bold', fontSize: '14px' }}>JASA SERVICES &amp; TECHNOLOGY SDN BHD</div>
                 <div style={{ fontSize: '10px' }}>(977527-H)</div>
               </div>
               <div style={{ fontWeight: 'bold', fontSize: '13px' }}>

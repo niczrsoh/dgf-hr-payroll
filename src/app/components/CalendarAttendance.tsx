@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 interface CalendarAttendanceProps {
   month: string; // YYYY-MM
   onChangeMonth: (month: string) => void;
+  selectedBranch?: string;
 }
 
 // Temporary manual public holidays list until external API is wired
@@ -16,12 +17,21 @@ const PUBLIC_HOLIDAYS = [
   '2026-06-01', // Gawai
 ];
 
-export default function CalendarAttendance({ month, onChangeMonth }: CalendarAttendanceProps) {
+type GazettedHoliday = { date: string; name: string; state_codes?: string[] };
+
+const STATE_NAMES: Record<string, string> = {
+  JHR: 'Johor', KDH: 'Kedah', KTN: 'Kelantan', MLK: 'Melaka', NSN: 'Negeri Sembilan',
+  PHG: 'Pahang', PRK: 'Perak', PLS: 'Perlis', PNG: 'Penang', SBH: 'Sabah', SWK: 'Sarawak',
+  SGR: 'Selangor', TRG: 'Terengganu', KUL: 'Kuala Lumpur', LBN: 'Labuan', PJY: 'Putrajaya'
+};
+
+export default function CalendarAttendance({ month, onChangeMonth, selectedBranch = 'ALL' }: CalendarAttendanceProps) {
   const { employees, branches, projects, dailyAttendance, saveDailyAttendance } = usePayroll();
   const [selectedDates, setSelectedDates] = useState<string[]>([]);
   const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [manualPublicHolidays, setManualPublicHolidays] = useState<string[]>([]);
+  const [gazettedHolidays, setGazettedHolidays] = useState<GazettedHoliday[]>([]);
 
   const year = parseInt(month.split('-')[0]);
   const monthIndex = parseInt(month.split('-')[1]) - 1;
@@ -55,6 +65,24 @@ export default function CalendarAttendance({ month, onChangeMonth }: CalendarAtt
     }
   }, []);
 
+  useEffect(() => {
+    const cacheKey = `gazetted_public_holidays_${year}`;
+    try {
+      const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+      if (Array.isArray(cached)) setGazettedHolidays(cached);
+    } catch { /* refresh from the API below */ }
+
+    fetch(`https://malaysia-holiday.dydxsoft.my/api/v1/holidays?year=${year}`)
+      .then(response => response.ok ? response.json() : Promise.reject(new Error('Holiday API unavailable')))
+      .then(payload => {
+        const holidays = Array.isArray(payload.data) ? payload.data : [];
+        setGazettedHolidays(holidays);
+        localStorage.setItem(cacheKey, JSON.stringify(holidays));
+        localStorage.setItem('gazetted_public_holidays', JSON.stringify(holidays));
+      })
+      .catch(() => undefined);
+  }, [year]);
+
   const persistManualPublicHolidays = (nextDates: string[]) => {
     const uniqueDates = Array.from(new Set(nextDates)).sort();
     setManualPublicHolidays(uniqueDates);
@@ -81,9 +109,23 @@ export default function CalendarAttendance({ month, onChangeMonth }: CalendarAtt
     onChangeMonth(`${nextYear}-${(nextMonth + 1).toString().padStart(2, '0')}`);
   };
 
+  const getHolidayForDate = (dateStr: string) => {
+    const branch = branches.find(item => item.code === selectedBranch);
+    const stateCodes: Record<string, string> = { Johor: 'JHR', Kedah: 'KDH', Kelantan: 'KTN', Melaka: 'MLK', 'Negeri Sembilan': 'NSN', Pahang: 'PHG', Perak: 'PRK', Perlis: 'PLS', 'Pulau Pinang': 'PNG', Penang: 'PNG', Sabah: 'SBH', Sarawak: 'SWK', Selangor: 'SGR', Terengganu: 'TRG', 'Kuala Lumpur': 'KUL', KL: 'KUL', 'W.P. Kuala Lumpur': 'KUL', 'Wilayah Persekutuan Kuala Lumpur': 'KUL', 'W.P. Labuan': 'LBN', 'W.P. Putrajaya': 'PJY' };
+    const stateCode = branch?.state ? stateCodes[branch.state] || branch.state.toUpperCase() : '';
+    return gazettedHolidays.find(holiday => holiday.date === dateStr && (selectedBranch === 'ALL' || !holiday.state_codes?.length || holiday.state_codes.includes('FED') || holiday.state_codes.includes(stateCode)));
+  };
+
+  const getHolidayLabel = (holiday?: GazettedHoliday) => {
+    if (!holiday) return '';
+    const states = (holiday.state_codes || []).filter(code => code !== 'FED').map(code => STATE_NAMES[code] || code);
+    return `${states.length ? states.join(', ') : 'Federal'}${holiday.name ? `: ${holiday.name}` : ''}`;
+  };
+
   const getDayType = (dateStr: string): 'Normal Day' | 'Rest Day' | 'Public Holiday' => {
     if (manualPublicHolidays.includes(dateStr)) return 'Public Holiday';
     if (PUBLIC_HOLIDAYS.includes(dateStr)) return 'Public Holiday';
+    if (getHolidayForDate(dateStr)) return 'Public Holiday';
     const dayOfWeek = new Date(dateStr).getDay();
     if (dayOfWeek === 0) return 'Rest Day'; // Sunday
     return 'Normal Day';
@@ -192,6 +234,8 @@ export default function CalendarAttendance({ month, onChangeMonth }: CalendarAtt
           if (!dateStr) return <div key={`empty-${i}`} className="bg-slate-50 min-h-[120px]"></div>;
 
           const dayType = getDayType(dateStr);
+          const gazettedHoliday = getHolidayForDate(dateStr);
+          const holidayLabel = getHolidayLabel(gazettedHoliday);
           const bgClass = 
             dayType === 'Public Holiday' ? 'bg-red-50/50 hover:bg-red-50' :
             dayType === 'Rest Day' ? 'bg-amber-50/50 hover:bg-amber-50' :
@@ -226,6 +270,7 @@ export default function CalendarAttendance({ month, onChangeMonth }: CalendarAtt
                   ? 'bg-blue-50 ring-2 ring-blue-500 ring-inset' 
                   : bgClass
               }`}
+            title={holidayLabel ? `Public Holiday - ${holidayLabel}` : undefined}
             >
               <div className="flex justify-between items-start">
                 <div className="flex items-center gap-2">
@@ -245,10 +290,16 @@ export default function CalendarAttendance({ month, onChangeMonth }: CalendarAtt
                 
                 {dayType !== 'Normal Day' && (
                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${labelClass}`}>
-                    {dayType === 'Public Holiday' ? 'PH' : 'Rest'}
+                    {dayType === 'Public Holiday' ? 'Public Holiday' : 'Rest'}
                   </span>
                 )}
               </div>
+
+              {dayType === 'Public Holiday' && holidayLabel && (
+                <div className="mt-1 px-2 text-[10px] font-medium text-red-700 truncate" title={holidayLabel}>
+                  {holidayLabel}
+                </div>
+              )}
 
               {/* Data Summary */}
               <div className="mt-2 space-y-1">

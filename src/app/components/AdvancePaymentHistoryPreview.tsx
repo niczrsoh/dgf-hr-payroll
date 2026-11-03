@@ -159,7 +159,7 @@ export default function AdvancePaymentHistoryPreview({ records, onClose }: Advan
 </head>
 <body>
   <div class="company-header">
-    <div class="company-name">DYNAMIC GUARDFORCE SDN BHD</div>
+    <div class="company-name">JASA SERVICES &amp; TECHNOLOGY SDN BHD</div>
     <div class="company-address">Payroll Management System</div>
     <div class="company-address">Advance Payment Processing Department</div>
   </div>

@@ -31,9 +31,9 @@ export default function PaymentListPreview({ payrolls, employees, month }: Payme
       {/* Header */}
       <div className="text-center mb-8 border-b-2 border-slate-800 pb-6">
         <div className="mb-4">
-          <img src={logo} alt="Dynamic Guardforce" className="h-16 mx-auto" />
+          <img src={logo} alt="Jasa Services & Technology" className="h-16 mx-auto" />
         </div>
-        <h1 className="text-2xl font-bold text-slate-900 mb-2">DYNAMIC GUARDFORCE SDN BHD</h1>
+        <h1 className="text-2xl font-bold text-slate-900 mb-2">JASA SERVICES &amp; TECHNOLOGY SDN BHD</h1>
         <p className="text-sm text-slate-600">Company Registration No: 202001234567 (1234567-A)</p>
         <p className="text-sm text-slate-600">Security Services Provider</p>
         <div className="mt-4 pt-4 border-t border-slate-300">
@@ -165,7 +165,7 @@ export default function PaymentListPreview({ payrolls, employees, month }: Payme
       <div className="border-t-2 border-slate-800 pt-4 text-center">
         <p className="text-xs text-slate-600 font-semibold mb-2">This is a computer generated payment list.</p>
         <p className="text-xs text-slate-500">For any queries, please contact Finance Department</p>
-        <p className="text-xs text-slate-500 mt-1">Dynamic Guardforce Sdn Bhd | Our Business Is Protecting You</p>
+        <p className="text-xs text-slate-500 mt-1">Jasa Services &amp; Technology Sdn Bhd | Our Business Is Protecting You</p>
       </div>
     </div>
   );

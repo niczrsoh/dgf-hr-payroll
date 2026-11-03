@@ -4,6 +4,19 @@ import { usePayroll } from '../context/PayrollContext';
 import { Employee, DailyAttendance, Branch, Project } from '../context/PayrollContext';
 import { toast } from 'sonner';
 
+const STATE_CODES: Record<string, string> = {
+  Johor: 'JHR', Kedah: 'KDH', Kelantan: 'KTN', Melaka: 'MLK', 'Negeri Sembilan': 'NSN',
+  Pahang: 'PHG', Perak: 'PRK', Perlis: 'PLS', 'Pulau Pinang': 'PNG', Penang: 'PNG', Sabah: 'SBH',
+  Sarawak: 'SWK', Selangor: 'SGR', Terengganu: 'TRG', 'Kuala Lumpur': 'KUL', KL: 'KUL', 'W.P. Kuala Lumpur': 'KUL', 'Wilayah Persekutuan Kuala Lumpur': 'KUL',
+  'W.P. Labuan': 'LBN', 'Wilayah Persekutuan Labuan': 'LBN', 'W.P. Putrajaya': 'PJY', 'Wilayah Persekutuan Putrajaya': 'PJY'
+};
+
+const STATE_NAMES: Record<string, string> = Object.fromEntries(
+  Object.entries(STATE_CODES).map(([name, code]) => [code, name === 'Pulau Pinang' ? 'Penang' : name.replace('Wilayah Persekutuan ', '')])
+);
+
+type GazettedHoliday = { date: string; name: string; state_codes?: string[] };
+
 interface DailyAttendanceModalProps {
   date?: string;
   dayType?: 'Normal Day' | 'Rest Day' | 'Public Holiday';
@@ -43,10 +56,47 @@ export default function DailyAttendanceModal({
   // Bulk Fill State
   const [selectedEmployees, setSelectedEmployees] = useState<Set<string>>(new Set());
 
+  const getEmployeeDayType = (employeeId: string, recordDate: string) => {
+    const employee = employees.find(item => item.id === employeeId);
+    const branch = branches.find(item => item.code === employee?.branchCode);
+    const stateCode = branch?.state ? STATE_CODES[branch.state] || branch.state.toUpperCase() : '';
+    try {
+      const holidays = JSON.parse(localStorage.getItem('gazetted_public_holidays') || '[]') as Array<{ date: string; state_codes?: string[] }>;
+      if (holidays.some(holiday => holiday.date === recordDate && (!holiday.state_codes?.length || holiday.state_codes.includes('FED') || holiday.state_codes.includes(stateCode)))) return 'Public Holiday' as const;
+    } catch { /* fall back to the calendar day type */ }
+    return getDayType?.(recordDate) || primaryDayType;
+  };
+
+  const getEmployeeHoliday = (employee: Employee, recordDate: string): GazettedHoliday | undefined => {
+    const branch = branches.find(item => item.code === employee.branchCode);
+    const stateCode = branch?.state ? STATE_CODES[branch.state] || branch.state.toUpperCase() : '';
+    try {
+      const holidays = JSON.parse(localStorage.getItem('gazetted_public_holidays') || '[]') as GazettedHoliday[];
+      return holidays.find(holiday => holiday.date === recordDate && (!holiday.state_codes?.length || holiday.state_codes.includes('FED') || holiday.state_codes.includes(stateCode)));
+    } catch {
+      return undefined;
+    }
+  };
+
+  const formatHolidayDetails = (holiday: GazettedHoliday) => {
+    const states = (holiday.state_codes || []).filter(code => code !== 'FED').map(code => STATE_NAMES[code] || code);
+    return `${holiday.name}${states.length ? ` - ${states.join(', ')}` : ' - Federal'}`;
+  };
+
+  const primaryHolidays = (() => {
+    try {
+      const holidays = JSON.parse(localStorage.getItem('gazetted_public_holidays') || '[]') as GazettedHoliday[];
+      return holidays.filter(holiday => holiday.date === primaryDate);
+    } catch {
+      return [] as GazettedHoliday[];
+    }
+  })();
+
   // Filter employees
   const filteredEmployees = employees.filter(emp => {
     if (emp.archivedDate) return false;
-    if (emp.createdDate && emp.createdDate > primaryDate) return false;
+    const joinDate = emp.dateOfJoin || emp.createdDate;
+    if (joinDate && joinDate > primaryDate) return false;
     
     const matchesBranch = selectedBranch === 'ALL' || emp.branchCode === selectedBranch;
     const matchesProject = selectedProject === 'ALL' || emp.projectId === selectedProject;
@@ -56,7 +106,7 @@ export default function DailyAttendanceModal({
   });
 
   const getRecord = (empId: string, recordDate = primaryDate): DailyAttendance => {
-    const recordDayType = getDayType?.(recordDate) || primaryDayType;
+    const recordDayType = getEmployeeDayType(empId, recordDate);
     // Check local edits first
     if (edits[empId]) {
       const record = {
@@ -65,6 +115,8 @@ export default function DailyAttendanceModal({
         date: recordDate,
         dayType: recordDayType,
         otHours: 0,
+        clockIn: '07:00',
+        clockOut: '15:00',
         leaveType: 'None' as const,
         leavePaid: false,
         ...dailyRecords.find(r => r.id === `${empId}_${recordDate}`),
@@ -75,7 +127,8 @@ export default function DailyAttendanceModal({
     // Check global state
     const existing = dailyRecords.find(r => r.id === `${empId}_${recordDate}`);
     if (existing) {
-      return existing.leaveType === 'Rest' ? { ...existing, leaveType: 'None', hasOT: true } : existing;
+      const withDefaultTimes = { clockIn: '07:00', clockOut: '15:00', ...existing };
+      return existing.leaveType === 'Rest' ? { ...withDefaultTimes, leaveType: 'None', hasOT: true } : withDefaultTimes;
     }
     return {
       id: `${empId}_${recordDate}`,
@@ -83,6 +136,8 @@ export default function DailyAttendanceModal({
       date: recordDate,
       dayType: recordDayType,
       otHours: 0,
+      clockIn: '07:00',
+      clockOut: '15:00',
       leaveType: 'None',
       leavePaid: false
     };
@@ -96,6 +151,14 @@ export default function DailyAttendanceModal({
         [field]: value
       }
     }));
+  };
+
+  const calculateHours = (clockIn?: string, clockOut?: string) => {
+    if (!clockIn || !clockOut) return { total: 0, overtime: 0 };
+    const [inHour, inMinute] = clockIn.split(':').map(Number);
+    const [outHour, outMinute] = clockOut.split(':').map(Number);
+    const total = (outHour * 60 + outMinute - inHour * 60 - inMinute) / 60;
+    return total > 0 ? { total, overtime: Math.max(0, total - 8) } : { total: 0, overtime: 0 };
   };
 
   const calculateLeaveEligibility = (emp: Employee, leaveType: string) => {
@@ -214,6 +277,7 @@ export default function DailyAttendanceModal({
       if (!emp) return;
       
       const record = getRecord(empId);
+      const hours = calculateHours(record.clockIn, record.clockOut);
       
       if (record.leaveType !== 'None') {
         const eligibility = calculateLeaveEligibility(emp, record.leaveType);
@@ -226,7 +290,7 @@ export default function DailyAttendanceModal({
             anticipatedOt = project.payStructure === '8+4' ? 4 : project.payStructure === '8+3' ? 3 : 0;
           }
         }
-        record.otHours = record.hasOT ? anticipatedOt : 0; // Assign OT if checked
+        record.otHours = record.hasOT ? hours.overtime : 0;
 
         if (!eligibility.allowed && record.leaveType !== 'Unpaid Leave') {
           toast.warning(`${emp.fullName} exceeded ${record.leaveType} limit. Marked as Unpaid.`);
@@ -241,7 +305,7 @@ export default function DailyAttendanceModal({
           if (project) {
             const anticipatedOt = project.payStructure === '8+4' ? 4 : project.payStructure === '8+3' ? 3 : 0;
             // Respect manual toggle if it was touched, otherwise default to expected OT
-            record.otHours = (record.hasOT !== false) ? anticipatedOt : 0;
+            record.otHours = (record.hasOT !== false) ? hours.overtime : 0;
           }
         } else {
           record.otHours = 0; // Default for no project
@@ -285,6 +349,11 @@ export default function DailyAttendanceModal({
                 {selectedDates.length > 1 ? 'Multiple Day Types' : primaryDayType}
               </span>
             </div>
+            {primaryDayType === 'Public Holiday' && primaryHolidays.length > 0 && (
+              <div className="mt-2 text-sm font-medium text-red-700">
+                {primaryHolidays.map(holiday => formatHolidayDetails(holiday)).join(' • ')}
+              </div>
+            )}
           </div>
           <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
             <X className="w-6 h-6 text-slate-500" />
@@ -352,6 +421,8 @@ export default function DailyAttendanceModal({
                 </th>
                 <th className="px-6 py-4 font-semibold text-slate-700">Employee</th>
                 <th className="px-6 py-4 font-semibold text-slate-700">Project</th>
+                <th className="px-6 py-4 font-semibold text-slate-700">Clock In / Out</th>
+                <th className="px-6 py-4 font-semibold text-slate-700">Hours / OT</th>
                 <th className="px-6 py-4 font-semibold text-slate-700">Leave / Status</th>
                 <th className="px-6 py-4 font-semibold text-slate-700 text-right">Est. Daily Pay</th>
               </tr>
@@ -359,9 +430,11 @@ export default function DailyAttendanceModal({
             <tbody className="divide-y divide-slate-200 bg-white">
               {filteredEmployees.map(emp => {
                 const record = getRecord(emp.id);
+                const employeeHoliday = getEmployeeHoliday(emp, primaryDate);
                 const isEdited = !!edits[emp.id];
                 const project = emp.projectId ? projects.find(p => p.id === emp.projectId) : null;
                 const balances = getLeaveBalances(emp);
+                const hours = calculateHours(record.clockIn, record.clockOut);
                 
                 let leaveWarning = '';
                 if (record.leaveType !== 'None') {
@@ -433,8 +506,24 @@ export default function DailyAttendanceModal({
                       </button>
                     </td>
                     <td className="px-6 py-3">
+                      <div className="flex items-center gap-1">
+                        <input type="time" value={record.clockIn || '07:00'} onChange={(e) => handleFieldChange(emp.id, 'clockIn', e.target.value)} className="w-28 px-2 py-1.5 border border-slate-300 rounded text-xs" />
+                        <span className="text-slate-400">to</span>
+                        <input type="time" value={record.clockOut || '15:00'} onChange={(e) => handleFieldChange(emp.id, 'clockOut', e.target.value)} className="w-28 px-2 py-1.5 border border-slate-300 rounded text-xs" />
+                      </div>
+                    </td>
+                    <td className="px-6 py-3 text-sm whitespace-nowrap">
+                      <div className="font-medium text-slate-700">{hours.total.toFixed(2)}h</div>
+                      <div className="text-xs text-blue-600">OT {hours.overtime.toFixed(2)}h</div>
+                    </td>
+                    <td className="px-6 py-3">
                       <div className="font-medium text-slate-900">{emp.fullName}</div>
                       <div className="text-xs text-slate-500">{emp.employeeNo} • {emp.branch}</div>
+                      {employeeHoliday && (
+                        <div className="mt-1 inline-flex items-center gap-1 rounded bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700" title={formatHolidayDetails(employeeHoliday)}>
+                          PH
+                        </div>
+                      )}
                     </td>
                     <td className="px-6 py-3">
                       {project ? (

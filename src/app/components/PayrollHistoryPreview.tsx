@@ -162,7 +162,7 @@ export default function PayrollHistoryPreview({ records, onClose }: PayrollHisto
 </head>
 <body>
   <div class="company-header">
-    <div class="company-name">DYNAMIC GUARDFORCE SDN BHD</div>
+    <div class="company-name">JASA SERVICES &amp; TECHNOLOGY SDN BHD</div>
     <div class="company-address">Payroll Management System</div>
     <div class="company-address">Salary Payment Processing Department</div>
   </div>

@@ -54,7 +54,7 @@ export default function BankUploadPreview({
 
         {/* Company Header */}
         <div className="px-6 py-4 bg-white border-b border-slate-200">
-          <h3 className="text-xl font-bold text-slate-900">Dynamic Guardforce Sdn Bhd</h3>
+          <h3 className="text-xl font-bold text-slate-900">Jasa Services &amp; Technology Sdn Bhd</h3>
           <p className="text-sm text-slate-600 mt-1">Bulk Payment Transfer File</p>
           <p className="text-xs text-slate-500 mt-1">Generated on: {new Date().toLocaleString('en-MY')}</p>
         </div>

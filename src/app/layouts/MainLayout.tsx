@@ -187,7 +187,7 @@ export default function MainLayout() {
 
         <div className={`p-3 border-t border-blue-800 text-xs text-blue-200 ${!sidebarOpen && 'lg:hidden'}`}>
           <p className="font-semibold text-white">Payroll System v1.0</p>
-          <p>© 2026 Dynamic Guardforce</p>
+          <p>© 2026 Jasa Services &amp; Technology Sdn Bhd</p>
           <p className="text-blue-300">Logged in as {user?.role}</p>
         </div>
       </div>

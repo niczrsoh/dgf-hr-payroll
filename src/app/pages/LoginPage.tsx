@@ -3,13 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Eye, EyeOff, LogIn } from 'lucide-react';
 import { toast } from 'sonner';
-import logo from '../../imports/logo-01-1-300x128.png';
 
 export default function LoginPage() {
-  // Pre-filled credentials for demo
+  // Pre-filled administrator credentials for initial access.
   const [username, setUsername] = useState('payroll.admin');
   const [password, setPassword] = useState('Admin@123');
-  const [showPassword, setShowPassword] = useState(true); // Visible by default for demo
+  const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
   const { login, isAuthenticated } = useAuth();
@@ -52,9 +51,10 @@ export default function LoginPage() {
           {/* Header Section */}
           <div className="bg-gradient-to-r from-blue-900 to-blue-800 p-8 text-center">
             <div className="mb-4">
-              <img src={logo} alt="Dynamic Guardforce" className="h-20 mx-auto" />
+              <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-2xl bg-white px-1 text-base font-black tracking-tight text-blue-900 shadow-lg whitespace-nowrap">
+                UJTECH
+              </div>
             </div>
-            <h1 className="text-xl font-bold text-white">DYNAMIC GUARDFORCE SDN BHD</h1>
             <p className="text-blue-200 mt-2 text-sm">Payroll Management System</p>
           </div>
 
@@ -76,7 +76,6 @@ export default function LoginPage() {
                   onChange={(e) => setUsername(e.target.value)}
                   className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-slate-50"
                   placeholder="Enter your username"
-                  readOnly
                 />
               </div>
 
@@ -91,7 +90,6 @@ export default function LoginPage() {
                     onChange={(e) => setPassword(e.target.value)}
                     className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-slate-50 pr-10"
                     placeholder="Enter your password"
-                    readOnly
                   />
                   <button
                     type="button"
@@ -122,29 +120,12 @@ export default function LoginPage() {
               </button>
             </form>
 
-            {/* Demo Credentials Info */}
-            <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-2 h-2 bg-blue-600 rounded-full"></div>
-                <p className="text-xs font-semibold text-blue-900 uppercase tracking-wide">Demo Account</p>
-              </div>
-              <div className="space-y-1">
-                <p className="text-sm text-blue-800">
-                  <span className="font-mono bg-blue-100 px-2 py-0.5 rounded text-xs">payroll.admin</span>
-                  <span className="text-blue-400 mx-2">/</span>
-                  <span className="font-mono bg-blue-100 px-2 py-0.5 rounded text-xs">Admin@123</span>
-                </p>
-              </div>
-              <p className="text-xs text-blue-600 mt-3">
-                ✓ Credentials are pre-filled. Click "Login" to continue.
-              </p>
-            </div>
           </div>
 
           {/* Footer */}
           <div className="bg-slate-50 px-8 py-4 border-t border-slate-200 text-center">
             <p className="text-xs text-slate-500">
-              © 2026 Dynamic Guardforce Sdn Bhd. All rights reserved.
+              © 2026 Jasa Services &amp; Technology Sdn Bhd. All rights reserved.
             </p>
             <p className="text-xs text-slate-400 mt-1">
               Our Business Is Protecting You
@@ -152,12 +133,6 @@ export default function LoginPage() {
           </div>
         </div>
 
-        {/* Additional Info Card */}
-        <div className="mt-4 bg-white/60 backdrop-blur-sm rounded-lg border border-white/40 p-4">
-          <p className="text-xs text-slate-600 text-center">
-            <strong className="text-slate-700">Quick Demo Path:</strong> Dashboard → Attendance Entry → Advance Payment → Payroll Processing → Payslip
-          </p>
-        </div>
       </div>
     </div>
   );
